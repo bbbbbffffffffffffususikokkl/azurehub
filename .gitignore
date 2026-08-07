@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+.cache/
+.turbo/
+.wrangler/
+bun.lockb
+package-lock.json
+pnpm-lock.yaml
+yarn.lock

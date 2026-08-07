@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ottermind-vibecoding-website-template",
+  "compatibility_date": "2026-06-17",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "disallow_importable_env",
+    "nodejs_compat_do_not_populate_process_env"
+  ],
+  "main": "src/server.ts"
+}

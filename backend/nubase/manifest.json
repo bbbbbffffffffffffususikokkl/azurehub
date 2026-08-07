@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "provider": "nubase",
+  "appCode": "app4e5h22bn3nxz",
+  "migrations": [
+    {
+      "id": "20260802224950_create_agent_revival_v6_scoped_chat",
+      "name": "create_agent_revival_v6_scoped_chat",
+      "file": "backend/nubase/migrations/20260802224950-create-agent-revival-v6-scoped-chat.sql",
+      "sqlHash": "a5f74be7a28bab1ca9330faaa6258b607dbad3daa8289a08c2fa5fc3eee578e4",
+      "dryRunId": "LC_AZ7-ZrJkRkB6qo2cZg-tUFm3Up21j",
+      "operationId": "nClORgY97KaBjSEwj1PXS",
+      "status": "applied",
+      "createdByTool": "mcp__ottermind__apply_nubase_migration",
+      "appliedAt": "2026-08-02T22:49:50.319Z"
+    }
+  ]
+}
