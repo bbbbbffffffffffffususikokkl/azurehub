@@ -523,7 +523,8 @@ T("luau.libs.frozen_coroutine", function() return EQ(table.isfrozen(coroutine), 
 T("luau.libs.frozen_utf8", function() return EQ(table.isfrozen(utf8), true) end)
 
 -- absent Lua 5.x globals
-for _, name in ipairs({"load", "dofile", "loadfile", "io", "package", "module", "setglobal", "getglobal"}) do
+-- (loadfile/dofile exist in executor environments as workspace-file functions: see unc.luau)
+for _, name in ipairs({"load", "io", "package", "module", "setglobal", "getglobal"}) do
     T("luau.absent." .. name, function() return EQ(getfenv(0)[name], nil) end)
 end
 

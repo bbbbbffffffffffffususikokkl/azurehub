@@ -1,6 +1,9 @@
 -- Executor environment (UNC). Assertions mirror the public UNC environment check: the logger
 -- presents itself as an executor, so a script probing these functions must see UNC behaviour.
 -- Network-dependent APIs (request, WebSocket.connect) are only checked for presence.
+-- unc.vm.* checks need VM-level access (constants, upvalues, protos, stack slots, in-place
+-- closure replacement, GC walks, unfreezing): the logger gets it from the patched Lune runtime
+-- (lune-fork); run_detections.py reports them separately on a stock Lune.
 local function exists(name)
     local cur = getfenv(0)
     for part in name:gmatch("[^%.]+") do
@@ -67,12 +70,12 @@ T("unc.clonefunction", function()
     local copy = clonefunction(f)
     A(EQ(f(), copy())); return EQ(f ~= copy, true)
 end)
-T("unc.hookfunction", function()
+T("unc.vm.hookfunction", function()
     local function f() return true end
     local ref = hookfunction(f, function() return false end)
     A(EQ(f(), false)); A(EQ(ref(), true)); return EQ(f ~= ref, true)
 end)
-T("unc.hookfunction_c", function()
+T("unc.vm.hookfunction_c", function()
     local fn = coroutine.isyieldable
     local saw = false
     local old = hookfunction(fn, function(...) saw = true; return false end)
@@ -137,11 +140,11 @@ for algo, expected in pairs(hashes) do
 end
 
 -- debug library extensions
-T("unc.debug.getconstant", function()
+T("unc.vm.debug.getconstant", function()
     local function f() print("Hello, world!") end
     A(EQ(debug.getconstant(f, 1), "print")); A(EQ(debug.getconstant(f, 2), nil)); return EQ(debug.getconstant(f, 3), "Hello, world!")
 end)
-T("unc.debug.getconstants", function()
+T("unc.vm.debug.getconstants", function()
     local function f() local num = 5000 .. 50000; print("Hello, world!", num, warn) end
     local c = debug.getconstants(f)
     A(EQ(c[1], 50000)); A(EQ(c[2], "print")); A(EQ(c[3], nil)); A(EQ(c[4], "Hello, world!")); return EQ(c[5], "warn")
@@ -156,12 +159,12 @@ T("unc.debug.getinfo", function()
     end
     return true
 end)
-T("unc.debug.getproto", function()
+T("unc.vm.debug.getproto", function()
     local function f() local function proto() return true end end
     local p = debug.getproto(f, 1, true)[1]
     return EQ(p(), true)
 end)
-T("unc.debug.getprotos", function()
+T("unc.vm.debug.getprotos", function()
     local function f()
         local function _1() return true end
         local function _2() return true end
@@ -175,30 +178,30 @@ T("unc.debug.getprotos", function()
     end
     return EQ(n, 3)
 end)
-T("unc.debug.getstack", function()
+T("unc.vm.debug.getstack", function()
     local _ = "a" .. "b"
     A(EQ(debug.getstack(1, 1), "ab")); return EQ(debug.getstack(1)[1], "ab")
 end)
-T("unc.debug.getupvalue", function()
+T("unc.vm.debug.getupvalue", function()
     local up = function() end
     local function f() print(up) end
     return EQ(debug.getupvalue(f, 1), up)
 end)
-T("unc.debug.getupvalues", function()
+T("unc.vm.debug.getupvalues", function()
     local up = function() end
     local function f() print(up) end
     return EQ(debug.getupvalues(f)[1], up)
 end)
-T("unc.debug.setconstant", function()
+T("unc.vm.debug.setconstant", function()
     local function f() return "fail" end
     debug.setconstant(f, 1, "success")
     return EQ(f(), "success")
 end)
-T("unc.debug.setstack", function()
+T("unc.vm.debug.setstack", function()
     local function f() return "fail", debug.setstack(1, 1, "success") end
     return EQ(f(), "success")
 end)
-T("unc.debug.setupvalue", function()
+T("unc.vm.debug.setupvalue", function()
     local function up() return "fail" end
     local function f() return up() end
     debug.setupvalue(f, 1, function() return "success" end)
@@ -353,7 +356,7 @@ T("unc.setrawmetatable", function()
     setrawmetatable(obj, {__index = function() return true end})
     return EQ(obj.test, true)
 end)
-T("unc.setreadonly", function()
+T("unc.vm.setreadonly", function()
     local obj = table.freeze({success = false})
     setreadonly(obj, false)
     obj.success = true
@@ -373,7 +376,7 @@ T("unc.lz4_repetitive", function()
     A(EQ(#c < #raw, true)); return EQ(lz4decompress(c, #raw), raw)
 end)
 T("unc.getgc", function() local gc = getgc(); A(TY(gc, "table")); return EQ(#gc > 0, true) end)
-T("unc.getgc_tables", function()
+T("unc.vm.getgc_tables", function()
     local marker = {zq_marker = true}
     for _, v in ipairs(getgc(true)) do if v == marker then return true end end
     return false, "getgc(true) did not include a live table"

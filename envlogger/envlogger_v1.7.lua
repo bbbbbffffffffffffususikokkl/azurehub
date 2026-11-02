@@ -290,7 +290,7 @@ robloxApi.proptypes = {
 ["ConfigSnapshot"]={["Error"]="E:ConfigSnapshotErrorState",["Outdated"]="b"},
 ["EditableImage"]={["Size"]="D:Vector2"},
 ["EditableMesh"]={["FixedSize"]="b"},
-["Instance"]={["Archivable"]="b",["Capabilities"]="nil",["Name"]="s",["Parent"]="I",["Sandboxed"]="b",["archivable"]="b"},
+["Instance"]={["Archivable"]="b",["Capabilities"]="D:SecurityCapabilities",["Name"]="s",["Parent"]="I",["Sandboxed"]="b",["archivable"]="b"},
 ["AccessoryDescription"]={["AccessoryType"]="E:AccessoryType",["AssetId"]="n",["Instance"]="I",["IsLayered"]="b",["Order"]="n",["Position"]="D:Vector3",["Puffiness"]="n",["Rotation"]="D:Vector3",["Scale"]="D:Vector3"},
 ["Accoutrement"]={["AttachmentForward"]="D:Vector3",["AttachmentPoint"]="D:CFrame",["AttachmentPos"]="D:Vector3",["AttachmentRight"]="D:Vector3",["AttachmentUp"]="D:Vector3"},
 ["Accessory"]={["AccessoryType"]="E:AccessoryType"},
@@ -1945,13 +1945,63 @@ end
 -- retried over http.
 local function performHttpGet(url)
     if not hasNet or type(url) ~= "string" then return nil end
-    local ok, res = pcall(function() return net.request({ url = url, method = "GET" }) end)
-    if not ok then
-        local httpUrl = url:gsub("^https://", "http://")
-        if httpUrl ~= url then
-            ok, res = pcall(function() return net.request({ url = httpUrl, method = "GET" }) end)
+    -- [v1.7] SSRF guard: the analysed script chooses this URL and receives the response body, so it
+    -- must never reach the dumper host's own network (loopback, private ranges, cloud metadata at
+    -- 169.254.169.254, ...). Only http(s) to a public host is fetched; there is no https->http
+    -- downgrade. Hostnames that *resolve* to private addresses cannot be caught here -- run the
+    -- dumper with egress restricted to the public internet.
+    local function publicUrl(u)
+        local scheme, rest = u:match("^(%a[%w+.-]*)://(.*)$")
+        if not scheme then return false end
+        scheme = scheme:lower()
+        if scheme ~= "http" and scheme ~= "https" then return false end
+        local authority = rest:match("^([^/?#]*)") or ""
+        authority = authority:gsub("^.*@", "")
+        local host = authority:match("^%[([^%]]+)%]") or authority:gsub(":%d*$", "")
+        host = host:lower():gsub("%.$", "")
+        if host == "" then return false end
+        if host == "localhost" or host:find("%.localhost$") or host:find("%.local$") or host:find("%.internal$")
+            or host == "metadata" or host == "instance-data" or host:find("^metadata%.") then return false end
+        if host:find(":", 1, true) then -- IPv6 literal
+            if host == "::" or host == "::1" or host:find("^fe[89ab]") or host:find("^f[cd]") or host:find("^ff")
+                or host:find("^::ffff:") or host:find("^64:ff9b:") or host:find("^0*:0*:0*:0*:0*:0*:") then return false end
+            return true
         end
+        -- IPv4 in any inet_aton spelling: dotted, decimal, hex or octal parts, fewer than four parts
+        local parts = {}
+        for part in (host .. "."):gmatch("([^.]*)%.") do parts[#parts + 1] = part end
+        local numeric = #parts >= 1 and #parts <= 4
+        local vals = {}
+        for i, part in ipairs(parts) do
+            local v
+            if part:match("^0[xX]%x*$") then v = tonumber(part:sub(3), 16) or 0
+            elseif part:match("^0[0-7]+$") then v = tonumber(part, 8)
+            elseif part:match("^%d+$") then v = tonumber(part) end
+            if v == nil then numeric = false break end
+            vals[i] = v
+        end
+        if numeric then
+            local n = 0
+            for i = 1, #vals - 1 do
+                if vals[i] > 255 then return false end
+                n = n * 256 + vals[i]
+            end
+            local last = vals[#vals]
+            local width = 2 ^ (8 * (5 - #vals))
+            if last >= width then return false end
+            n = n * width + last
+            local a, b = math.floor(n / 16777216), math.floor(n / 65536) % 256
+            if a == 0 or a == 10 or a == 127 or a >= 224 then return false end
+            if a == 100 and b >= 64 and b <= 127 then return false end
+            if a == 169 and b == 254 then return false end
+            if a == 172 and b >= 16 and b <= 31 then return false end
+            if a == 192 and (b == 168 or (b == 0 and math.floor(n / 256) % 256 == 0)) then return false end
+            if a == 198 and (b == 18 or b == 19) then return false end
+        end
+        return true
     end
+    if not publicUrl(url) then return nil end
+    local ok, res = pcall(function() return net.request({ url = url, method = "GET" }) end)
     -- The response is a Lune userdata (not a Lua table), so read .body directly.
     if ok and res ~= nil then
         local okB, body = pcall(function() return res.body end)
@@ -2228,7 +2278,7 @@ _vm.rvc_gate = (function()
         MAX_CORPUS_FILES = 48,
         MAX_CORPUS_BYTES = 16 * 1024 * 1024,
         MAX_CORPUS_KEYS = 150000,            -- hard cap on index entries (memory bound)
-        MAX_FILE_LINES = 30000,              -- stop walking one file after this many lines
+        MAX_FILE_LINES = 100000,             -- [v1.7] covers the whole logger (it grew past 30000 lines)
         MAX_BLOBS = 32,
         MAX_BINARY_BLOBS = 8,                -- blobs given the (heavier) XOR/RC4 attempt
         BLOB_PREFIX = 131072,                -- decode at most 128 KiB per blob
@@ -5954,6 +6004,7 @@ robloxApi.typedDefault = function(token, key, className)
             elseif t == "TweenInfo" then return TweenInfo.new(1)
             elseif t == "PhysicalProperties" then return PhysicalProperties.new(0.7, 0.3, 0.5)
             elseif t == "Font" then return Font.new("rbxasset://fonts/families/SourceSansPro.json")
+            elseif t == "SecurityCapabilities" then return SecurityCapabilities.new() -- [v1.7] Instance.Capabilities is an empty set, never nil
             elseif t == "Axes" then return Axes.new()
             elseif t == "Faces" then return Faces.new()
             elseif t == "NumberSequenceKeypoint" then return NumberSequenceKeypoint.new(0, 0)
@@ -8603,29 +8654,29 @@ Humanoid|WalkToPart|@NIL;Humanoid|WalkToPoint|@V3:0,0,0;Humanoid|maxHealth|n100;
 HumanoidDescription|WaistAccessory|s;HumanoidDescription|WalkAnimation|n0;HumanoidDescription|WidthScale|n1;HumanoidRigDescription|Chest|@NIL;HumanoidRigDescription|ChestRangeMax|@V3:0,0,0;HumanoidRigDescription|ChestRangeMin|@V3:0,0,0;HumanoidRigDescription|ChestSize|n0;HumanoidRigDescription|ChestTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|HeadBase|@NIL;HumanoidRigDescription|HeadBaseRangeMax|@V3:0,0,0;HumanoidRigDescription|HeadBaseRangeMin|@V3:0,0,0;HumanoidRigDescription|HeadBaseSize|n0;HumanoidRigDescription|HeadBaseTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftAnkle|@NIL;HumanoidRigDescription|LeftAnkleRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftAnkleRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftAnkleSize|n0;HumanoidRigDescription|LeftAnkleTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftClavicle|@NIL;HumanoidRigDescription|LeftClavicleRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftClavicleRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftClavicleSize|n0;HumanoidRigDescription|LeftClavicleTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftElbow|@NIL;HumanoidRigDescription|LeftElbowRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftElbowRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftElbowSize|n0;HumanoidRigDescription|LeftElbowTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftHip|@NIL;HumanoidRigDescription|LeftHipRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftHipRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftHipSize|n0;HumanoidRigDescription|LeftHipTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftKnee|@NIL;HumanoidRigDescription|LeftKneeRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftKneeRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftKneeSize|n0;HumanoidRigDescription|LeftKneeTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftShoulder|@NIL;HumanoidRigDescription|LeftShoulderRangeMax|@V3:0,0,0
 HumanoidRigDescription|LeftShoulderRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftShoulderSize|n0;HumanoidRigDescription|LeftShoulderTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftToeBase|@NIL;HumanoidRigDescription|LeftToeBaseRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftToeBaseRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftToeBaseSize|n0;HumanoidRigDescription|LeftToeBaseTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|LeftWrist|@NIL;HumanoidRigDescription|LeftWristRangeMax|@V3:0,0,0;HumanoidRigDescription|LeftWristRangeMin|@V3:0,0,0;HumanoidRigDescription|LeftWristSize|n0;HumanoidRigDescription|LeftWristTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|Neck|@NIL;HumanoidRigDescription|NeckRangeMax|@V3:0,0,0;HumanoidRigDescription|NeckRangeMin|@V3:0,0,0;HumanoidRigDescription|NeckSize|n0;HumanoidRigDescription|NeckTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|OriginOffset|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightAnkle|@NIL;HumanoidRigDescription|RightAnkleRangeMax|@V3:0,0,0;HumanoidRigDescription|RightAnkleRangeMin|@V3:0,0,0;HumanoidRigDescription|RightAnkleSize|n0;HumanoidRigDescription|RightAnkleTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightClavicle|@NIL;HumanoidRigDescription|RightClavicleRangeMax|@V3:0,0,0;HumanoidRigDescription|RightClavicleRangeMin|@V3:0,0,0;HumanoidRigDescription|RightClavicleSize|n0;HumanoidRigDescription|RightClavicleTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightElbow|@NIL;HumanoidRigDescription|RightElbowRangeMax|@V3:0,0,0;HumanoidRigDescription|RightElbowRangeMin|@V3:0,0,0;HumanoidRigDescription|RightElbowSize|n0;HumanoidRigDescription|RightElbowTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightHip|@NIL;HumanoidRigDescription|RightHipRangeMax|@V3:0,0,0;HumanoidRigDescription|RightHipRangeMin|@V3:0,0,0;HumanoidRigDescription|RightHipSize|n0;HumanoidRigDescription|RightHipTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightKnee|@NIL
 HumanoidRigDescription|RightKneeRangeMax|@V3:0,0,0;HumanoidRigDescription|RightKneeRangeMin|@V3:0,0,0;HumanoidRigDescription|RightKneeSize|n0;HumanoidRigDescription|RightKneeTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightShoulder|@NIL;HumanoidRigDescription|RightShoulderRangeMax|@V3:0,0,0;HumanoidRigDescription|RightShoulderRangeMin|@V3:0,0,0;HumanoidRigDescription|RightShoulderSize|n0;HumanoidRigDescription|RightShoulderTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightToeBase|@NIL;HumanoidRigDescription|RightToeBaseRangeMax|@V3:0,0,0;HumanoidRigDescription|RightToeBaseRangeMin|@V3:0,0,0;HumanoidRigDescription|RightToeBaseSize|n0;HumanoidRigDescription|RightToeBaseTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|RightWrist|@NIL;HumanoidRigDescription|RightWristRangeMax|@V3:0,0,0;HumanoidRigDescription|RightWristRangeMin|@V3:0,0,0;HumanoidRigDescription|RightWristSize|n0;HumanoidRigDescription|RightWristTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|Root|@NIL;HumanoidRigDescription|RootRangeMax|@V3:0,0,0;HumanoidRigDescription|RootRangeMin|@V3:0,0,0;HumanoidRigDescription|RootSize|n0;HumanoidRigDescription|RootTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|Spine|@NIL;HumanoidRigDescription|SpineRangeMax|@V3:0,0,0;HumanoidRigDescription|SpineRangeMin|@V3:0,0,0;HumanoidRigDescription|SpineSize|n0;HumanoidRigDescription|SpineTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;HumanoidRigDescription|Waist|@NIL;HumanoidRigDescription|WaistRangeMax|@V3:0,0,0;HumanoidRigDescription|WaistRangeMin|@V3:0,0,0;HumanoidRigDescription|WaistSize|n0;HumanoidRigDescription|WaistTposeAdjustment|@CF:0,0,0,1,0,0,0,1,0,0,0,1;IKControl|ChainRoot|@NIL;IKControl|Enabled|b1;IKControl|EndEffector|@NIL;IKControl|EndEffectorOffset|@CF:0,0,0,1,0,0,0,1,0,0,0,1;IKControl|Offset|@CF:0,0,0,1,0,0,0,1,0,0,0,1;IKControl|Pole|@NIL
-IKControl|Priority|n0;IKControl|SmoothTime|n0.05000000074505806;IKControl|Target|@NIL;IKControl|Type|@EN:IKControlType.Transform;IKControl|Weight|n1;ImageButton|Active|b1;ImageButton|HoverImage|s;ImageButton|HoverImageContent|@CN:;ImageButton|Image|s;ImageButton|ImageColor3|@C3:1,1,1;ImageButton|ImageRectOffset|@V2:0,0;ImageButton|ImageRectSize|@V2:0,0;ImageButton|ImageTransparency|n0;ImageButton|PressedImage|s;ImageButton|PressedImageContent|@CN:;ImageButton|ResampleMode|@EN:ResamplerMode.Default;ImageButton|ScaleType|@EN:ScaleType.Stretch;ImageButton|Selectable|b1;ImageButton|SliceCenter|@RC:0,0,0,0;ImageButton|SliceScale|n1;ImageButton|TileSize|@U2:1,0,1,0;ImageHandleAdornment|Color3|@C3:0.9490196704864502,0.9529412388801575,0.9529412388801575;ImageHandleAdornment|Image|srbxasset://textures/SurfacesDefault.png;ImageHandleAdornment|Size|@V2:1,1;ImageLabel|Image|s;ImageLabel|ImageColor3|@C3:1,1,1;ImageLabel|ImageRectOffset|@V2:0,0;ImageLabel|ImageRectSize|@V2:0,0;ImageLabel|ImageTransparency|n0;ImageLabel|ResampleMode|@EN:ResamplerMode.Default;ImageLabel|ScaleType|@EN:ScaleType.Stretch;ImageLabel|SliceCenter|@RC:0,0,0,0;ImageLabel|SliceScale|n1;ImageLabel|TileSize|@U2:1,0,1,0;InputAction|DisplayName|s;InputAction|Enabled|b1;InputAction|PreferredBinding|@NIL;InputAction|Type|@EN:InputActionType.Bool;InputActionLabel|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json;Regular;Normal;InputActionLabel|ImageColor3|@C3:1,1,1
-InputActionLabel|ImageTransparency|n0;InputActionLabel|InputAction|@NIL;InputActionLabel|ResolvedText|s;InputActionLabel|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;InputActionLabel|TextSize|n8;InputActionLabel|TextTransparency|n0;InputActionLabel|TextWrapped|b0;InputActionLabel|TextXAlignment|@EN:TextXAlignment.Center;InputActionLabel|TextYAlignment|@EN:TextYAlignment.Center;InputBinding|Backward|@EN:KeyCode.None;InputBinding|ClampMagnitudeToOne|b1;InputBinding|Deadzone|@NR:0.10000000149011612,1;InputBinding|DisplayImage|@CN:;InputBinding|DisplayName|s;InputBinding|Down|@EN:KeyCode.None;InputBinding|Forward|@EN:KeyCode.None;InputBinding|KeyCode|@EN:KeyCode.None;InputBinding|Left|@EN:KeyCode.None;InputBinding|PointerIndex|n0;InputBinding|PressedThreshold|n0.5;InputBinding|PrimaryModifier|@EN:KeyCode.None;InputBinding|ReleasedThreshold|n0.20000000298023224;InputBinding|ResponseCurve|n1;InputBinding|Right|@EN:KeyCode.None;InputBinding|Scale|n1;InputBinding|SecondaryModifier|@EN:KeyCode.None;InputBinding|Type|@EN:InputBindingType.Automatic;InputBinding|UIButton|@NIL;InputBinding|UIModifier|@NIL;InputBinding|Up|@EN:KeyCode.None;InputBinding|Vector2Scale|@V2:1,1;InputBinding|Vector3Scale|@V3:1,1,1;InputContext|Enabled|b1;InputContext|Priority|n1000;InputContext|Sink|b0;Instance|Archivable|b1;Instance|archivable|b1;InstanceAdornment|Adornee|@NIL;IntConstrainedValue|ConstrainedValue|n0;IntConstrainedValue|MaxValue|n10
-IntConstrainedValue|MinValue|n0;IntConstrainedValue|Value|n0;IntValue|Value|n0;IntersectOperation|BottomSurface|@EN:SurfaceType.Smooth;IntersectOperation|Color|@C3:1,1,1;JointInstance|C0|@CF:0,0,0,1,0,0,0,1,0,0,0,1;JointInstance|C1|@CF:0,0,0,1,0,0,0,1,0,0,0,1;JointInstance|Enabled|b1;JointInstance|Part0|@NIL;JointInstance|Part1|@NIL;JointInstance|part1|@NIL;Keyframe|Time|n0;KeyframeMarker|Value|s;LayerCollector|Enabled|b1;LayerCollector|ResetOnSpawn|b1;LayerCollector|ZIndexBehavior|@EN:ZIndexBehavior.Global;Light|Brightness|n1;Light|Color|@C3:1,1,1;Light|Enabled|b1;Light|Shadows|b0;LineForce|ApplyAtCenterOfMass|b0;LineForce|InverseSquareLaw|b0;LineForce|Magnitude|n1000;LineForce|MaxForce|ninf;LineForce|ReactionForceEnabled|b0;LineHandleAdornment|Length|n5;LineHandleAdornment|Thickness|n1;LinearVelocity|Color|@BC:26;LinearVelocity|ForceLimitMode|@EN:ForceLimitMode.Magnitude;LinearVelocity|ForceLimitsEnabled|b1;LinearVelocity|LineDirection|@V3:1,0,0;LinearVelocity|LineVelocity|n-0;LinearVelocity|MaxAxesForce|@V3:1000,1000,1000;LinearVelocity|MaxForce|n1000;LinearVelocity|MaxPlanarAxesForce|@V2:1000,1000;LinearVelocity|PlaneVelocity|@V2:0,0;LinearVelocity|PrimaryTangentAxis|@V3:1,0,0;LinearVelocity|ReactionForceEnabled|b1;LinearVelocity|RelativeTo|@EN:ActuatorRelativeTo.World;LinearVelocity|SecondaryTangentAxis|@V3:0,1,0
-LinearVelocity|VectorVelocity|@V3:0,0,0;LinearVelocity|VelocityConstraintMode|@EN:VelocityConstraintMode.Vector;LocalizationTable|DevelopmentLanguage|sen-us;LocalizationTable|Root|@NIL;LocalizationTable|SourceLocaleId|sen-us;MakeupDescription|AssetId|n0;MakeupDescription|Instance|@NIL;MakeupDescription|MakeupType|@EN:MakeupType.Face;MakeupDescription|Order|n0;MarkerCurve|Length|n0;MaterialVariant|AlphaMode|@EN:AlphaMode.Opaque;MaterialVariant|BaseMaterial|@EN:Material.Plastic;MaterialVariant|CustomPhysicalProperties|@NIL;MaterialVariant|EmissiveStrength|n1;MaterialVariant|EmissiveTint|@C3:1,1,1;MaterialVariant|MaterialPattern|@EN:MaterialPattern.Regular;MaterialVariant|StudsPerTile|n10;MeshPart|BottomSurface|@EN:SurfaceType.Smooth;MeshPart|DoubleSided|b0;MeshPart|HasJointOffset|b0;MeshPart|HasSkinnedMesh|b0;MeshPart|JointOffset|@V3:0,0,0;MeshPart|MeshContent|@CN:;MeshPart|MeshId|s;MeshPart|TextureContent|@CN:;MeshPart|TextureID|s;Message|Text|s;Model|LevelOfDetail|@EN:ModelLevelOfDetail.Automatic;Model|ModelStreamingMode|@EN:ModelStreamingMode.Default;Model|PrimaryPart|@NIL;Model|WorldPivot|@CF:0,0,0,1,0,0,0,1,0,0,0,1;ModuleScript|LinkedSource|s;ModuleScript|Source|s;Motor|DesiredAngle|n0;Motor|MaxVelocity|n0;Motor6D|Transform|@CF:0,0,0,1,0,0,0,1,0,0,0,1;NegateOperation|Anchored|b1;NegateOperation|BottomSurface|@EN:SurfaceType.Smooth;NegateOperation|CanCollide|b0;NegateOperation|Color|@C3:1,1,1
-NegateOperation|Transparency|n0.10000000149011612;NoCollisionConstraint|Enabled|b1;NoCollisionConstraint|Part0|@NIL;NoCollisionConstraint|Part1|@NIL;NumberPose|Value|n0;NumberValue|Value|n0;ObjectValue|Value|@NIL;PVAdornment|Adornee|@NIL;Pants|PantsTemplate|s;Pants|PantsTemplateContent|@CN:;ParabolaAdornment|Color3|@C3:0.9490196704864502,0.9529412388801575,0.9529412388801575;Part|Shape|@EN:PartType.Block;Part|TopSurface|@EN:SurfaceType.Studs;PartAdornment|Adornee|@NIL;PartOperation|BottomSurface|@EN:SurfaceType.Smooth;PartOperation|Color|@C3:1,1,1;PartOperation|SmoothingAngle|n0;PartOperation|UsePartColor|b0;ParticleEmitter|Acceleration|@V3:0,0,0;ParticleEmitter|Brightness|n1;ParticleEmitter|Color|@CS:0,1,1,1,1,1,1,1;ParticleEmitter|Drag|n0;ParticleEmitter|EmissionDirection|@EN:NormalId.Top;ParticleEmitter|Enabled|b1;ParticleEmitter|FlipbookBlendFrames|b1;ParticleEmitter|FlipbookFramerate|@NR:1,1;ParticleEmitter|FlipbookIncompatible|sParticle texture must be 1024 by 1024 to use flipbooks.;ParticleEmitter|FlipbookLayout|@EN:ParticleFlipbookLayout.None;ParticleEmitter|FlipbookMode|@EN:ParticleFlipbookMode.Loop;ParticleEmitter|FlipbookSizeX|n1;ParticleEmitter|FlipbookSizeY|n1;ParticleEmitter|FlipbookStartRandom|b0;ParticleEmitter|Lifetime|@NR:5,10;ParticleEmitter|LightEmission|n0;ParticleEmitter|LightInfluence|n0;ParticleEmitter|LocalTransparencyModifier|n0;ParticleEmitter|LockedToPart|b0;ParticleEmitter|Orientation|@EN:ParticleOrientation.FacingCamera;ParticleEmitter|Rate|n20;ParticleEmitter|RotSpeed|@NR:0,0
-ParticleEmitter|Rotation|@NR:0,0;ParticleEmitter|Shape|@EN:ParticleEmitterShape.Box;ParticleEmitter|ShapeInOut|@EN:ParticleEmitterShapeInOut.Outward;ParticleEmitter|ShapePartial|n1;ParticleEmitter|ShapeStyle|@EN:ParticleEmitterShapeStyle.Volume;ParticleEmitter|Size|@NS:0,1,0,1,1,0;ParticleEmitter|Speed|@NR:5,5;ParticleEmitter|SpreadAngle|@V2:0,0;ParticleEmitter|Squash|@NS:0,0,0,1,0,0;ParticleEmitter|Texture|srbxasset://textures/particles/sparkles_main.dds;ParticleEmitter|TimeScale|n1;ParticleEmitter|Transparency|@NS:0,0,0,1,0,0;ParticleEmitter|VelocityInheritance|n0;ParticleEmitter|VelocitySpread|n0;ParticleEmitter|WindAffectsDrag|b0;ParticleEmitter|ZOffset|n0;ParticleEmitter2D|Acceleration|@V2:0,0;ParticleEmitter2D|Blend|n0;ParticleEmitter2D|Brightness|n1;ParticleEmitter2D|Drag|n0;ParticleEmitter2D|EmissionAngle|n0;ParticleEmitter2D|EmissionMode|@EN:ParticleEmitter2DEmissionMode.BoundingBox;ParticleEmitter2D|EmissionOffset|@V2:0,0;ParticleEmitter2D|EmissionSpread|@V2:0,0;ParticleEmitter2D|Enabled|b1;ParticleEmitter2D|FlipbookBlendFrames|b1;ParticleEmitter2D|FlipbookFramerate|@NR:1,1;ParticleEmitter2D|FlipbookLayout|@EN:ParticleFlipbookLayout.None;ParticleEmitter2D|FlipbookMode|@EN:ParticleFlipbookMode.Loop;ParticleEmitter2D|FlipbookSizeX|n1;ParticleEmitter2D|FlipbookSizeY|n1;ParticleEmitter2D|FlipbookStartRandom|b0;ParticleEmitter2D|Lifetime|@NR:5,10;ParticleEmitter2D|LightEmission|n0;ParticleEmitter2D|LockedToParent|b0;ParticleEmitter2D|Rate|n20;ParticleEmitter2D|RotSpeed|@NR:0,0;ParticleEmitter2D|Rotation|@NR:0,0;ParticleEmitter2D|Speed|@NR:64,64;ParticleEmitter2D|SpreadAngle|n0
-ParticleEmitter2D|TimeScale|n1;ParticleEmitter2D|ZIndex|n1;Path2D|Closed|b0;Path2D|Color3|@C3:0,0,0;Path2D|Thickness|n1;Path2D|Visible|b1;Path2D|ZIndex|n1;PathfindingLink|Attachment0|@NIL;PathfindingLink|Attachment1|@NIL;PathfindingLink|IsBidirectional|b1;PathfindingLink|Label|s;PathfindingModifier|Label|s;PathfindingModifier|PassThrough|b0;PhysicsActivitySensor|Active|b1;PhysicsActivitySensor|Position|@V3:0,0,0;PhysicsActivitySensor|Size|@V3:0,0,0;PitchShiftSoundEffect|Octave|n1.25;Plane|Color|@BC:194;PlaneConstraint|Color|@BC:194;Player|Character|@NIL;Player|ReplicationFocus|@NIL;Player|RespawnLocation|@NIL;Player|Team|@NIL;PluginAction|ActionId|s;PluginAction|AllowBinding|b1;PluginAction|StatusTip|s;PluginAction|Text|s;PointLight|Range|n8;Pose|CFrame|@CF:0,0,0,1,0,0,0,1,0,0,0,1;Pose|MaskWeight|n0;PoseBase|EasingDirection|@EN:PoseEasingDirection.In;PoseBase|EasingStyle|@EN:PoseEasingStyle.Linear;PoseBase|Weight|n1;PostEffect|Enabled|b1;PrismaticConstraint|Color|@BC:1009;ProceduralModel|GenerationError|s;ProceduralModel|Generator|@NIL;ProceduralModel|Size|@V3:12,12,12;ProximityPrompt|ActionText|sInteract;ProximityPrompt|AutoLocalize|b1
-ProximityPrompt|ClickablePrompt|b1;ProximityPrompt|Enabled|b1;ProximityPrompt|Exclusivity|@EN:ProximityPromptExclusivity.OnePerButton;ProximityPrompt|GamepadKeyCode|@EN:KeyCode.ButtonX;ProximityPrompt|HoldDuration|n0;ProximityPrompt|KeyboardKeyCode|@EN:KeyCode.E;ProximityPrompt|MaxActivationDistance|n10;ProximityPrompt|MaxIndicatorDistance|n0;ProximityPrompt|ObjectText|s;ProximityPrompt|RequiresLineOfSight|b1;ProximityPrompt|RootLocalizationTable|@NIL;ProximityPrompt|Style|@EN:ProximityPromptStyle.Default;ProximityPrompt|UIOffset|@V2:0,0;PyramidHandleAdornment|Height|n2;PyramidHandleAdornment|Shading|@EN:AdornShading.Default;PyramidHandleAdornment|Sides|n4;PyramidHandleAdornment|Size|n1;RTAnimationTracker|Active|b0;RTAnimationTracker|EnableFallbackAudioInput|b0;RTAnimationTracker|SessionName|s;RTAnimationTracker|TrackerMode|@EN:TrackerMode.None;RTAnimationTracker|TrackerType|@EN:TrackerType.Face;RayValue|Value|@RY:0,0,0,0,0,0;RealtimeMedia|AudioInputActive|b0;RealtimeMedia|IsConnected|b0;RealtimeMedia|IsConnectionWeak|b0;ReflectionMetadataClass|ExplorerImageIndex|n0;ReflectionMetadataClass|ExplorerOrder|n2147483647;ReflectionMetadataClass|Insertable|b1;ReflectionMetadataClass|PreferredParent|s;ReflectionMetadataItem|Browsable|b1;ReflectionMetadataItem|ClassCategory|s;ReflectionMetadataItem|ClientOnly|b0;ReflectionMetadataItem|Constraint|s;ReflectionMetadataItem|Deprecated|b0;ReflectionMetadataItem|EditingDisabled|b0;ReflectionMetadataItem|EditorType|s;ReflectionMetadataItem|FFlag|s;ReflectionMetadataItem|IsBackend|b0;ReflectionMetadataItem|PropertyOrder|n5000
-ReflectionMetadataItem|ScriptContext|s;ReflectionMetadataItem|ServerOnly|b0;ReflectionMetadataItem|SliderScaling|s;ReflectionMetadataItem|UIMaximum|n0;ReflectionMetadataItem|UIMinimum|n0;ReflectionMetadataItem|UINumTicks|n0;RenderingTest|CFrame|@CF:0,0,0,1,0,0,0,1,0,0,0,1;RenderingTest|ComparisonDiffThreshold|n10;RenderingTest|ComparisonMethod|@EN:RenderingTestComparisonMethod.psnr;RenderingTest|ComparisonPsnrThreshold|n50;RenderingTest|Description|s;RenderingTest|FieldOfView|n70;RenderingTest|Orientation|@V3:-0,0,0;RenderingTest|PerfTest|b0;RenderingTest|Position|@V3:0,0,0;RenderingTest|QualityAuto|b0;RenderingTest|QualityLevel|n21;RenderingTest|RenderingTestFrameCount|n20;RenderingTest|ShouldSkip|b0;RenderingTest|Ticket|s;RenderingTest|Timeout|n30;ReverbSoundEffect|DecayTime|n1.5;ReverbSoundEffect|Density|n1;ReverbSoundEffect|Diffusion|n1;ReverbSoundEffect|DryLevel|n-6;ReverbSoundEffect|WetLevel|n0;RigidConstraint|Color|@BC:194;RocketPropulsion|CartoonFactor|n0.699999988079071;RocketPropulsion|MaxSpeed|n30;RocketPropulsion|MaxThrust|n4000;RocketPropulsion|MaxTorque|@V3:400000,400000,0;RocketPropulsion|Target|@NIL;RocketPropulsion|TargetOffset|@V3:0,0,0;RocketPropulsion|TargetRadius|n4;RocketPropulsion|ThrustD|n0.0010000000474974513;RocketPropulsion|ThrustP|n5;RocketPropulsion|TurnD|n500;RocketPropulsion|TurnP|n3000;RodConstraint|Color|@BC:26;RodConstraint|Length|n5
-RodConstraint|LimitAngle0|n90;RodConstraint|LimitAngle1|n90;RodConstraint|LimitsEnabled|b0;RodConstraint|Thickness|n0.10000000149011612;RopeConstraint|Color|@BC:25;RopeConstraint|Length|n5;RopeConstraint|Restitution|n0;RopeConstraint|Thickness|n0.10000000149011612;RopeConstraint|WinchEnabled|b0;RopeConstraint|WinchForce|n10000;RopeConstraint|WinchResponsiveness|n45;RopeConstraint|WinchSpeed|n2;RopeConstraint|WinchTarget|n5;RotationCurve|Length|n0;ScreenGui|ClipToDeviceSafeArea|b1;ScreenGui|DisplayOrder|n0;ScreenGui|IgnoreGuiInset|b0;ScreenGui|SafeAreaCompatibility|@EN:SafeAreaCompatibility.FullscreenExtension;ScreenGui|ScreenInsets|@EN:ScreenInsets.CoreUISafeInsets;Script|Source|s;ScrollingFrame|AutomaticCanvasSize|@EN:AutomaticSize.None;ScrollingFrame|BottomImage|srbxasset://textures/ui/Scroll/scroll-bottom.png;ScrollingFrame|CanvasPosition|@V2:0,0;ScrollingFrame|CanvasSize|@U2:0,0,2,0;ScrollingFrame|ClipsDescendants|b1;ScrollingFrame|ElasticBehavior|@EN:ElasticBehavior.WhenScrollable;ScrollingFrame|HorizontalScrollBarInset|@EN:ScrollBarInset.None;ScrollingFrame|MidImage|srbxasset://textures/ui/Scroll/scroll-middle.png;ScrollingFrame|ScrollBarImageColor3|@C3:1,1,1;ScrollingFrame|ScrollBarImageTransparency|n0;ScrollingFrame|ScrollBarThickness|n12;ScrollingFrame|ScrollingDirection|@EN:ScrollingDirection.XY;ScrollingFrame|ScrollingEnabled|b1;ScrollingFrame|Selectable|b1;ScrollingFrame|SelectionGroup|b1;ScrollingFrame|TopImage|srbxasset://textures/ui/Scroll/scroll-top.png;ScrollingFrame|VerticalScrollBarInset|@EN:ScrollBarInset.None;ScrollingFrame|VerticalScrollBarPosition|@EN:VerticalScrollBarPosition.Right;Seat|Disabled|b0;Seat|Occupant|@NIL
-Seat|TopSurface|@EN:SurfaceType.Studs;SelectionBox|LineThickness|n0.15000000596046448;SelectionBox|SurfaceColor3|@C3:0.050980400294065475,0.4117650091648102,0.6745100021362305;SelectionBox|SurfaceTransparency|n1;SelectionLasso|Humanoid|@NIL;SelectionPartLasso|Part|@NIL;SelectionPointLasso|Point|@V3:0,0,0;SelectionSphere|SurfaceColor3|@C3:0.050980400294065475,0.4117650091648102,0.6745100021362305;SelectionSphere|SurfaceTransparency|n1;SensorBase|UpdateType|@EN:SensorUpdateType.OnRead;Shirt|ShirtTemplate|s;Shirt|ShirtTemplateContent|@CN:;ShirtGraphic|Color3|@C3:1,1,1;ShirtGraphic|Graphic|s;ShirtGraphic|TextureContent|@CN:;SkateboardController|Steer|n0;SkateboardController|Throttle|n0;SkateboardPlatform|Controller|@NIL;SkateboardPlatform|ControllingHumanoid|@NIL;SkateboardPlatform|Steer|n0;SkateboardPlatform|StickyWheels|b1;SkateboardPlatform|Throttle|n0;SkateboardPlatform|TopSurface|@EN:SurfaceType.Studs;Skin|SkinColor|@BC:226;Sky|CelestialBodiesShown|b1;Sky|MoonAngularSize|n11;Sky|MoonTextureId|srbxasset://sky/moon.jpg;Sky|SkyboxBk|srbxasset://textures/sky/sky512_bk.tex;Sky|SkyboxDn|srbxasset://textures/sky/sky512_dn.tex;Sky|SkyboxFt|srbxasset://textures/sky/sky512_ft.tex;Sky|SkyboxLf|srbxasset://textures/sky/sky512_lf.tex;Sky|SkyboxOrientation|@V3:0,0,0;Sky|SkyboxRt|srbxasset://textures/sky/sky512_rt.tex;Sky|SkyboxUp|srbxasset://textures/sky/sky512_up.tex;Sky|StarCount|n3000;Sky|SunAngularSize|n21;Sky|SunTextureId|srbxasset://sky/sun.jpg;SlidingBallConstraint|ActuatorType|@EN:ActuatorType.None;SlidingBallConstraint|LimitsEnabled|b0;SlidingBallConstraint|LinearResponsiveness|n45
-SlidingBallConstraint|LowerLimit|n0;SlidingBallConstraint|MotorMaxAcceleration|ninf;SlidingBallConstraint|MotorMaxForce|n0;SlidingBallConstraint|Restitution|n0;SlidingBallConstraint|ServoMaxForce|n0;SlidingBallConstraint|Size|n0.15000000596046448;SlidingBallConstraint|SoftlockServoUponReachingTarget|b0;SlidingBallConstraint|Speed|n0;SlidingBallConstraint|TargetPosition|n0;SlidingBallConstraint|UpperLimit|n5;SlidingBallConstraint|Velocity|n0;Smoke|Color|@C3:1,1,1;Smoke|Enabled|b1;Smoke|LocalTransparencyModifier|n0;Smoke|Opacity|n0.5;Smoke|RiseVelocity|n1;Smoke|Size|n1;Smoke|TimeScale|n1;Sound|AcousticSimulationEnabled|b1;Sound|AudioContent|@CN:;Sound|EmitterSize|n10;Sound|IsPaused|b1;Sound|LoopRegion|@NR:0,60000;Sound|Looped|b0;Sound|MaxDistance|n10000;Sound|MinDistance|n10;Sound|Pitch|n1;Sound|PlayOnRemove|b0;Sound|PlaybackRegion|@NR:0,60000;Sound|PlaybackRegionsEnabled|b0;Sound|PlaybackSpeed|n1;Sound|Playing|b0;Sound|RollOffMaxDistance|n10000;Sound|RollOffMinDistance|n10;Sound|RollOffMode|@EN:RollOffMode.Inverse;Sound|SoundGroup|@NIL;Sound|SoundId|s;Sound|Volume|n0.5;Sound|isPlaying|b0;SoundEffect|Enabled|b1
-SoundEffect|Priority|n0;SoundGroup|Volume|n0.5;Sparkles|Color|@C3:1,1,1;Sparkles|Enabled|b1;Sparkles|LocalTransparencyModifier|n0;Sparkles|SparkleColor|@C3:0.564706027507782,0.09803920239210129,1;Sparkles|TimeScale|n1;SpawnLocation|AllowTeamChangeOnTouch|b0;SpawnLocation|Duration|n10;SpawnLocation|Enabled|b1;SpawnLocation|Neutral|b1;SpawnLocation|TeamColor|@BC:194;SpawnLocation|TopSurface|@EN:SurfaceType.Studs;SpecialMesh|MeshType|@EN:MeshType.Head;SphereHandleAdornment|Radius|n1;SphereHandleAdornment|Shading|@EN:AdornShading.Default;SpotLight|Angle|n90;SpotLight|Face|@EN:NormalId.Front;SpotLight|Range|n16;SpringConstraint|Coils|n3;SpringConstraint|Color|@BC:200;SpringConstraint|Damping|n0;SpringConstraint|FreeLength|n1;SpringConstraint|LimitsEnabled|b0;SpringConstraint|MaxForce|ninf;SpringConstraint|MaxLength|n5;SpringConstraint|MinLength|n0;SpringConstraint|Radius|n0.4000000059604645;SpringConstraint|Stiffness|n0;SpringConstraint|Thickness|n0.10000000149011612;StarterGear|Loaded|b0;StateMachineTransitionDefinition|From|@NIL;StateMachineTransitionDefinition|Priority|n0;StateMachineTransitionDefinition|To|@NIL;StringValue|Value|s;StudioAttachment|AutoHideParent|b0;StudioAttachment|IsArrowVisible|b0;StudioAttachment|Offset|@V2:0,0;StudioAttachment|SourceAnchorPoint|@V2:0,0;StudioAttachment|TargetAnchorPoint|@V2:0,0
-StyleDerive|Priority|n0;StyleDerive|StyleSheet|@NIL;StyleLink|StyleSheet|@NIL;StyleQuery|IsActive|b0;StyleRule|Priority|n0;StyleRule|Selector|s;StyleRule|SelectorError|s;SunRaysEffect|Intensity|n0.25;SunRaysEffect|Spread|n1;SurfaceAppearance|AlphaMode|@EN:AlphaMode.Overlay;SurfaceAppearance|Color|@C3:1,1,1;SurfaceAppearance|ColorMapContent|@CN:;SurfaceAppearance|EmissiveMaskContent|@CN:;SurfaceAppearance|EmissiveStrength|n1;SurfaceAppearance|EmissiveTint|@C3:1,1,1;SurfaceAppearance|MetalnessMapContent|@CN:;SurfaceAppearance|NormalMapContent|@CN:;SurfaceAppearance|ResampleMode|@EN:ResamplerMode.Default;SurfaceAppearance|RoughnessMapContent|@CN:;SurfaceAppearance|SurfaceSlot|n-1;SurfaceGui|AlwaysOnTop|b0;SurfaceGui|Brightness|n1;SurfaceGui|CanvasSize|@V2:800,600;SurfaceGui|ClipsDescendants|b0;SurfaceGui|LightInfluence|n0;SurfaceGui|MaxDistance|n0;SurfaceGui|PixelsPerStud|n50;SurfaceGui|SizingMode|@EN:SurfaceGuiSizingMode.FixedSize;SurfaceGui|ToolPunchThroughDistance|n0;SurfaceGui|ZOffset|n0;SurfaceGuiBase|Active|b1;SurfaceGuiBase|Adornee|@NIL;SurfaceGuiBase|Face|@EN:NormalId.Front;SurfaceLight|Angle|n90;SurfaceLight|Face|@EN:NormalId.Front;SurfaceLight|Range|n16;SurfaceSelection|TargetSurface|@EN:NormalId.Right;SwimController|AccelerationTime|n0;SwimController|PitchMaxTorque|n10000;SwimController|PitchSpeedFactor|n1
-SwimController|RollMaxTorque|n10000;SwimController|RollSpeedFactor|n1;Team|AutoAssignable|b1;Team|AutoColorCharacters|b1;Team|Score|n0;Team|TeamColor|@BC:1;TeleportOptions|ReservedServerAccessCode|s;TeleportOptions|ReservedServerId|s;TeleportOptions|ServerInstanceId|s;TeleportOptions|ShouldReserveServer|b0;TeleportOptions|VipServerId|s;TerrainDetail|EmissiveStrength|n1;TerrainDetail|EmissiveTint|@C3:1,1,1;TerrainDetail|Face|@EN:TerrainFace.Side;TerrainDetail|MaterialPattern|@EN:MaterialPattern.Regular;TerrainDetail|StudsPerTile|n10;TerrainRegion|IsSmooth|b1;TerrainRegion|SizeInCells|@V3:1,1,1;TextBox|Active|b1;TextBox|ClearTextOnFocus|b1;TextBox|CursorPosition|n1;TextBox|Font|@EN:Font.Legacy;TextBox|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json;Regular;Normal;TextBox|FontSize|@EN:FontSize.Size8;TextBox|LineHeight|n1;TextBox|MaxVisibleGraphemes|n-1;TextBox|MultiLine|b0;TextBox|OpenTypeFeatures|s;TextBox|OpenTypeFeaturesError|s;TextBox|PlaceholderColor3|@C3:0.5,0.5,0.5;TextBox|PlaceholderText|s;TextBox|RichText|b0;TextBox|Selectable|b1;TextBox|SelectionStart|n-1;TextBox|ShowNativeInput|b1;TextBox|Text|sTextBox;TextBox|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;TextBox|TextDirection|@EN:TextDirection.Auto;TextBox|TextEditable|b1;TextBox|TextScaled|b0
-TextBox|TextSize|n8;TextBox|TextStrokeColor3|@C3:0,0,0;TextBox|TextStrokeTransparency|n1;TextBox|TextTransparency|n0;TextBox|TextTruncate|@EN:TextTruncate.None;TextBox|TextWrap|b0;TextBox|TextWrapped|b0;TextBox|TextXAlignment|@EN:TextXAlignment.Center;TextBox|TextYAlignment|@EN:TextYAlignment.Center;TextButton|Active|b1;TextButton|Font|@EN:Font.Legacy;TextButton|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json;Regular;Normal;TextButton|FontSize|@EN:FontSize.Size8;TextButton|LineHeight|n1;TextButton|MaxVisibleGraphemes|n-1;TextButton|OpenTypeFeatures|s;TextButton|OpenTypeFeaturesError|s;TextButton|RichText|b0;TextButton|Selectable|b1;TextButton|Text|sButton;TextButton|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;TextButton|TextDirection|@EN:TextDirection.Auto;TextButton|TextScaled|b0;TextButton|TextSize|n8;TextButton|TextStrokeColor3|@C3:0,0,0;TextButton|TextStrokeTransparency|n1;TextButton|TextTransparency|n0;TextButton|TextTruncate|@EN:TextTruncate.None;TextButton|TextWrap|b0;TextButton|TextWrapped|b0;TextButton|TextXAlignment|@EN:TextXAlignment.Center;TextButton|TextYAlignment|@EN:TextYAlignment.Center;TextChannel|AddPlayersOnJoin|b0;TextChannel|DirectChatRequester|@NIL;TextChannelWindow|FontFace|@FN:rbxasset://fonts/families/BuilderSans.json;Medium;Normal;TextChannelWindow|Target|@NIL;TextChannelWindow|UseDefaultFont|b1;TextChatCommand|AutocompleteVisible|b1;TextChatCommand|Enabled|b1;TextChatCommand|PrimaryAlias|s
-TextChatCommand|SecondaryAlias|s;TextChatMessageProperties|PrefixText|s;TextChatMessageProperties|Text|s;TextChatMessageProperties|Translation|s;TextDocument|TextContent|@CN:;TextGenerator|Seed|n0;TextGenerator|SystemPrompt|s;TextGenerator|Temperature|n0.699999988079071;TextGenerator|TopP|n0.8999999761581421;TextLabel|Font|@EN:Font.Legacy;TextLabel|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json;Regular;Normal;TextLabel|FontSize|@EN:FontSize.Size8;TextLabel|LineHeight|n1;TextLabel|MaxVisibleGraphemes|n-1;TextLabel|OpenTypeFeatures|s;TextLabel|OpenTypeFeaturesError|s;TextLabel|RichText|b0;TextLabel|Text|sLabel;TextLabel|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;TextLabel|TextDirection|@EN:TextDirection.Auto;TextLabel|TextScaled|b0;TextLabel|TextSize|n8;TextLabel|TextStrokeColor3|@C3:0,0,0;TextLabel|TextStrokeTransparency|n1;TextLabel|TextTransparency|n0;TextLabel|TextTruncate|@EN:TextTruncate.None;TextLabel|TextWrap|b0;TextLabel|TextWrapped|b0;TextLabel|TextXAlignment|@EN:TextXAlignment.Center;TextLabel|TextYAlignment|@EN:TextYAlignment.Center;Texture|OffsetStudsU|n0;Texture|OffsetStudsV|n0;Texture|StudsPerTileU|n2;Texture|StudsPerTileV|n2;Tool|CanBeDropped|b1;Tool|Enabled|b1;Tool|Grip|@CF:0,0,0,1,0,0,0,1,0,0,0,1;Tool|GripForward|@V3:-0,-0,-1;Tool|GripPos|@V3:0,0,0;Tool|GripRight|@V3:1,0,0
-Tool|GripUp|@V3:0,1,0;Tool|ManualActivationOnly|b0;Tool|RequiresHandle|b1;Tool|ToolTip|s;Torque|RelativeTo|@EN:ActuatorRelativeTo.Attachment0;Torque|Torque|@V3:0,0,0;TorsionSpringConstraint|Coils|n8;TorsionSpringConstraint|Color|@BC:200;TorsionSpringConstraint|Damping|n0.009999999776482582;TorsionSpringConstraint|LimitEnabled|b0;TorsionSpringConstraint|LimitsEnabled|b0;TorsionSpringConstraint|MaxAngle|n45;TorsionSpringConstraint|MaxTorque|ninf;TorsionSpringConstraint|Radius|n0.4000000059604645;TorsionSpringConstraint|Restitution|n0;TorsionSpringConstraint|Stiffness|n100;Trail|Attachment0|@NIL;Trail|Attachment1|@NIL;Trail|Brightness|n1;Trail|Color|@CS:0,1,1,1,1,1,1,1;Trail|Enabled|b1;Trail|FaceCamera|b0;Trail|Lifetime|n2;Trail|LightEmission|n0;Trail|LightInfluence|n0;Trail|LocalTransparencyModifier|n0;Trail|MaxLength|n0;Trail|MinLength|n0.10000000149011612;Trail|Texture|s;Trail|TextureContent|@CN:;Trail|TextureLength|n1;Trail|TextureMode|@EN:TextureMode.Stretch;Trail|Transparency|@NS:0,0.5,0,1,0.5,0;Trail|WidthScale|@NS:0,1,0,1,1,0;TremoloSoundEffect|Depth|n1;TremoloSoundEffect|Duty|n0.5;TremoloSoundEffect|Frequency|n5;TrussPart|BackSurface|@EN:SurfaceType.Universal;TrussPart|BottomSurface|@EN:SurfaceType.Universal;TrussPart|FrontSurface|@EN:SurfaceType.Universal
-TrussPart|LeftSurface|@EN:SurfaceType.Universal;TrussPart|RightSurface|@EN:SurfaceType.Universal;TrussPart|Size|@V3:2,2,2;TrussPart|Style|@EN:Style.AlternatingSupports;TrussPart|TopSurface|@EN:SurfaceType.Universal;Tween|Instance|@NIL;UIAspectRatioConstraint|AspectRatio|n1;UIAspectRatioConstraint|AspectType|@EN:AspectType.FitWithinMaxSize;UIAspectRatioConstraint|DominantAxis|@EN:DominantAxis.Width;UIBlur|Color|@C3:1,1,1;UIBlur|Enabled|b1;UIBlur|Strength|@EN:UIBlurStrength.Heavy;UIBlur|Transparency|n0;UICorner|BottomLeftRadius|@U1:0,8;UICorner|BottomRightRadius|@U1:0,8;UICorner|CornerRadius|@U1:0,8;UICorner|TopLeftRadius|@U1:0,8;UICorner|TopRightRadius|@U1:0,8;UIDragDetector|ActivatedCursorIcon|s;UIDragDetector|ActivatedCursorIconContent|@CN:;UIDragDetector|BoundingBehavior|@EN:UIDragDetectorBoundingBehavior.Automatic;UIDragDetector|BoundingUI|@NIL;UIDragDetector|CursorIcon|s;UIDragDetector|CursorIconContent|@CN:;UIDragDetector|DragAxis|@V2:1,0;UIDragDetector|DragRelativity|@EN:UIDragDetectorDragRelativity.Absolute;UIDragDetector|DragRotation|n0;UIDragDetector|DragSpace|@EN:UIDragDetectorDragSpace.Parent;UIDragDetector|DragStyle|@EN:UIDragDetectorDragStyle.TranslatePlane;UIDragDetector|DragUDim2|@U2:0,0,0,0;UIDragDetector|Enabled|b1;UIDragDetector|MaxDragAngle|n0;UIDragDetector|MaxDragTranslation|@U2:0,0,0,0;UIDragDetector|MinDragAngle|n0;UIDragDetector|MinDragTranslation|@U2:0,0,0,0;UIDragDetector|ReferenceUIInstance|@NIL;UIDragDetector|ResponseStyle|@EN:UIDragDetectorResponseStyle.Offset;UIDragDetector|Selectable|b1;UIDragDetector|SelectionModeDragSpeed|@U2:0,300,0,300;UIDragDetector|SelectionModeRotateSpeed|n90
-UIDragDetector|UIDragSpeedAxisMapping|@EN:UIDragSpeedAxisMapping.XY;UIFlexItem|FlexMode|@EN:UIFlexMode.None;UIFlexItem|GrowRatio|n0;UIFlexItem|ItemLineAlignment|@EN:ItemLineAlignment.Automatic;UIFlexItem|ShrinkRatio|n0;UIGradient|Color|@CS:0,1,1,1,1,1,1,1;UIGradient|Enabled|b1;UIGradient|Offset|@V2:0,0;UIGradient|Rotation|n0;UIGradient|Scale|n1;UIGradient|TileMode|@EN:GradientTileMode.Clamp;UIGradient|Transparency|@NS:0,0,0,1,0,0;UIGradient|Type|@EN:GradientType.Linear;UIGridLayout|CellPadding|@U2:0,5,0,5;UIGridLayout|CellSize|@U2:0,100,0,100;UIGridLayout|FillDirection|@EN:FillDirection.Horizontal;UIGridLayout|FillDirectionMaxCells|n0;UIGridLayout|StartCorner|@EN:StartCorner.TopLeft;UIGridStyleLayout|FillDirection|@EN:FillDirection.Vertical;UIGridStyleLayout|HorizontalAlignment|@EN:HorizontalAlignment.Left;UIGridStyleLayout|SortOrder|@EN:SortOrder.Name;UIGridStyleLayout|VerticalAlignment|@EN:VerticalAlignment.Top;UIListLayout|FillDirection|@EN:FillDirection.Vertical;UIListLayout|HorizontalFlex|@EN:UIFlexAlignment.None;UIListLayout|ItemLineAlignment|@EN:ItemLineAlignment.Automatic;UIListLayout|Padding|@U1:0,0;UIListLayout|VerticalFlex|@EN:UIFlexAlignment.None;UIListLayout|Wraps|b0;UIPadding|PaddingBottom|@U1:0,0;UIPadding|PaddingLeft|@U1:0,0;UIPadding|PaddingRight|@U1:0,0;UIPadding|PaddingTop|@U1:0,0;UIPageLayout|Animated|b1;UIPageLayout|Circular|b0;UIPageLayout|EasingDirection|@EN:EasingDirection.Out;UIPageLayout|EasingStyle|@EN:EasingStyle.Back;UIPageLayout|FillDirection|@EN:FillDirection.Horizontal;UIPageLayout|GamepadInputEnabled|b1;UIPageLayout|Padding|@U1:0,0;UIPageLayout|ScrollWheelInputEnabled|b1
-UIPageLayout|TouchInputEnabled|b1;UIPageLayout|TweenTime|n1;UIScale|Scale|n1;UIShadow|BlurRadius|@U1:0,0;UIShadow|Color|@C3:0,0,0;UIShadow|Enabled|b1;UIShadow|Inset|b0;UIShadow|Mode|@EN:ApplyShadowMode.Shape;UIShadow|Offset|@U2:0,0,0,0;UIShadow|ShowBehindParent|b1;UIShadow|Spread|@U2:0,0,0,0;UIShadow|Transparency|n0;UIShadow|ZIndex|n-1;UISizeConstraint|MaxSize|@V2:inf,inf;UISizeConstraint|MinSize|@V2:0,0;UIStroke|ApplyStrokeMode|@EN:ApplyStrokeMode.Contextual;UIStroke|BorderOffset|@U1:0,0;UIStroke|BorderStrokePosition|@EN:BorderStrokePosition.Outer;UIStroke|Color|@C3:0,0,0;UIStroke|Enabled|b1;UIStroke|LineJoinMode|@EN:LineJoinMode.Round;UIStroke|StrokeSizingMode|@EN:StrokeSizingMode.FixedSize;UIStroke|Thickness|n1;UIStroke|Transparency|n0;UIStroke|ZIndex|n1;UITableLayout|FillEmptySpaceColumns|b0;UITableLayout|FillEmptySpaceRows|b0;UITableLayout|MajorAxis|@EN:TableMajorAxis.RowMajor;UITableLayout|Padding|@U2:0,0,0,0;UITextSizeConstraint|MaxTextSize|n100;UITextSizeConstraint|MinTextSize|n1;UnionOperation|BottomSurface|@EN:SurfaceType.Smooth;UnionOperation|Color|@C3:1,1,1;UniversalConstraint|Color|@BC:1009;UniversalConstraint|LimitsEnabled|b0;UniversalConstraint|MaxAngle|n45;UniversalConstraint|Radius|n0.20000000298023224;UniversalConstraint|Restitution|n0;ValueCurve|Length|n0;ValueCurve|ValueType|snil
-Vector3Value|Value|@V3:0,0,0;VectorForce|ApplyAtCenterOfMass|b0;VectorForce|Force|@V3:1000,0,0;VectorForce|RelativeTo|@EN:ActuatorRelativeTo.Attachment0;VehicleSeat|AreHingesDetected|n0;VehicleSeat|Disabled|b0;VehicleSeat|HeadsUpDisplay|b1;VehicleSeat|MaxSpeed|n25;VehicleSeat|Occupant|@NIL;VehicleSeat|Steer|n0;VehicleSeat|SteerFloat|n0;VehicleSeat|Throttle|n0;VehicleSeat|ThrottleFloat|n0;VehicleSeat|TopSurface|@EN:SurfaceType.Studs;VehicleSeat|Torque|n10;VehicleSeat|TurnSpeed|n1;VelocityMotor|DesiredAngle|n0;VelocityMotor|Hole|@NIL;VelocityMotor|MaxVelocity|n0;VideoDeviceInput|Active|b0;VideoDeviceInput|CameraId|s;VideoDeviceInput|CaptureQuality|@EN:VideoDeviceCaptureQuality.Default;VideoDisplay|ResampleMode|@EN:ResamplerMode.Default;VideoDisplay|ScaleType|@EN:ScaleType.Stretch;VideoDisplay|TileSize|@U2:1,0,1,0;VideoDisplay|VideoColor3|@C3:1,1,1;VideoDisplay|VideoRectOffset|@V2:0,0;VideoDisplay|VideoRectSize|@V2:0,0;VideoDisplay|VideoTransparency|n0;VideoFrame|InternalVideoUsage|@EN:InternalVideoUsage.Default;VideoFrame|Looped|b0;VideoFrame|MaximumResolution|@EN:VideoSampleSize.Full;VideoFrame|Playing|b0;VideoFrame|RollOffMaxDistance|n10000;VideoFrame|RollOffMinDistance|n1;VideoFrame|RollOffMode|@EN:RollOffMode.Inverse;VideoFrame|Video|s;VideoFrame|VideoContent|@CN:;VideoFrame|Volume|n1;VideoPlayer|InternalVideoUsage|@EN:InternalVideoUsage.Default
-VideoPlayer|Looping|b0;VideoPlayer|MaximumResolution|@EN:VideoSampleSize.Full;VideoPlayer|PlaybackSpeed|n1;VideoPlayer|VideoContent|@CN:;VideoPlayer|Volume|n1;ViewportFrame|Ambient|@C3:0.784313976764679,0.784313976764679,0.784313976764679;ViewportFrame|CurrentCamera|@NIL;ViewportFrame|ImageColor3|@C3:1,1,1;ViewportFrame|ImageTransparency|n0;ViewportFrame|LightColor|@C3:0.549019992351532,0.549019992351532,0.549019992351532;ViewportFrame|LightDirection|@V3:-1,-1,-1;WeldConstraint|Active|b0;WeldConstraint|Enabled|b1;WeldConstraint|Part0|@NIL;WeldConstraint|Part1|@NIL;Wire|Connected|b0;Wire|SourceInstance|@NIL;Wire|SourceName|sOutput;Wire|TargetInstance|@NIL;Wire|TargetName|sInput;WireframeHandleAdornment|Scale|@V3:1,1,1;WireframeHandleAdornment|Thickness|n1;WorldModel|UseWorkspaceCollisionGroups|b0;WrapLayer|AutoSkin|@EN:WrapLayerAutoSkin.Disabled;WrapLayer|BindOffset|@CF:0,0,0,1,0,0,0,1,0,0,0,1;WrapLayer|Enabled|b1;WrapLayer|Order|n1;WrapLayer|Puffiness|n1;WrapLayer|ReferenceMeshContent|@CN:;WrapLayer|ReferenceMeshId|s;WrapLayer|ReferenceOrigin|@CF:0,0,0,1,0,0,0,1,0,0,0,1;WrapLayer|ReferenceOriginWorld|@CF:0,0,0,1,0,0,0,1,0,0,0,1;WrapLayer|ShrinkFactor|n0;WrapLayer|TargetShaping|n0;WrapTarget|Stiffness|n0;WrapTextureTransfer|ReferenceCageMeshContent|@CN:;WrapTextureTransfer|UVMaxBound|@V2:-inf,-inf;WrapTextureTransfer|UVMinBound|@V2:inf,inf
+IKControl|Priority|n0;IKControl|SmoothTime|n0.05000000074505806;IKControl|Target|@NIL;IKControl|Type|@EN:IKControlType.Transform;IKControl|Weight|n1;ImageButton|Active|b1;ImageButton|HoverImage|s;ImageButton|HoverImageContent|@CN:;ImageButton|Image|s;ImageButton|ImageColor3|@C3:1,1,1;ImageButton|ImageRectOffset|@V2:0,0;ImageButton|ImageRectSize|@V2:0,0;ImageButton|ImageTransparency|n0;ImageButton|PressedImage|s;ImageButton|PressedImageContent|@CN:;ImageButton|ResampleMode|@EN:ResamplerMode.Default;ImageButton|ScaleType|@EN:ScaleType.Stretch;ImageButton|Selectable|b1;ImageButton|SliceCenter|@RC:0,0,0,0;ImageButton|SliceScale|n1;ImageButton|TileSize|@U2:1,0,1,0;ImageHandleAdornment|Color3|@C3:0.9490196704864502,0.9529412388801575,0.9529412388801575;ImageHandleAdornment|Image|srbxasset://textures/SurfacesDefault.png;ImageHandleAdornment|Size|@V2:1,1;ImageLabel|Image|s;ImageLabel|ImageColor3|@C3:1,1,1;ImageLabel|ImageRectOffset|@V2:0,0;ImageLabel|ImageRectSize|@V2:0,0;ImageLabel|ImageTransparency|n0;ImageLabel|ResampleMode|@EN:ResamplerMode.Default;ImageLabel|ScaleType|@EN:ScaleType.Stretch;ImageLabel|SliceCenter|@RC:0,0,0,0;ImageLabel|SliceScale|n1;ImageLabel|TileSize|@U2:1,0,1,0;InputAction|DisplayName|s;InputAction|Enabled|b1;InputAction|PreferredBinding|@NIL;InputAction|Type|@EN:InputActionType.Bool;InputActionLabel|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json~Regular~Normal;InputActionLabel|ImageColor3|@C3:1,1,1
+InputActionLabel|ImageTransparency|n0;InputActionLabel|InputAction|@NIL;InputActionLabel|ResolvedText|s;InputActionLabel|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;InputActionLabel|TextSize|n8;InputActionLabel|TextTransparency|n0;InputActionLabel|TextWrapped|b0;InputActionLabel|TextXAlignment|@EN:TextXAlignment.Center;InputActionLabel|TextYAlignment|@EN:TextYAlignment.Center;InputBinding|Backward|@EN:KeyCode.None;InputBinding|ClampMagnitudeToOne|b1;InputBinding|Deadzone|@NR:0.10000000149011612,1;InputBinding|DisplayImage|@CN:;InputBinding|DisplayName|s;InputBinding|Down|@EN:KeyCode.None;InputBinding|Forward|@EN:KeyCode.None;InputBinding|KeyCode|@EN:KeyCode.None;InputBinding|Left|@EN:KeyCode.None;InputBinding|PointerIndex|n0;InputBinding|PressedThreshold|n0.5;InputBinding|PrimaryModifier|@EN:KeyCode.None;InputBinding|ReleasedThreshold|n0.20000000298023224;InputBinding|ResponseCurve|n1;InputBinding|Right|@EN:KeyCode.None;InputBinding|Scale|n1;InputBinding|SecondaryModifier|@EN:KeyCode.None;InputBinding|Type|@EN:InputBindingType.Automatic;InputBinding|UIButton|@NIL;InputBinding|UIModifier|@NIL;InputBinding|Up|@EN:KeyCode.None;InputBinding|Vector2Scale|@V2:1,1;InputBinding|Vector3Scale|@V3:1,1,1;InputContext|Enabled|b1;InputContext|Priority|n1000;InputContext|Sink|b0;Instance|Archivable|b1;Instance|Capabilities|@SC:;Instance|archivable|b1;InstanceAdornment|Adornee|@NIL;IntConstrainedValue|ConstrainedValue|n0
+IntConstrainedValue|MaxValue|n10;IntConstrainedValue|MinValue|n0;IntConstrainedValue|Value|n0;IntValue|Value|n0;IntersectOperation|BottomSurface|@EN:SurfaceType.Smooth;IntersectOperation|Color|@C3:1,1,1;JointInstance|C0|@CF:0,0,0,1,0,0,0,1,0,0,0,1;JointInstance|C1|@CF:0,0,0,1,0,0,0,1,0,0,0,1;JointInstance|Enabled|b1;JointInstance|Part0|@NIL;JointInstance|Part1|@NIL;JointInstance|part1|@NIL;Keyframe|Time|n0;KeyframeMarker|Value|s;LayerCollector|Enabled|b1;LayerCollector|ResetOnSpawn|b1;LayerCollector|ZIndexBehavior|@EN:ZIndexBehavior.Global;Light|Brightness|n1;Light|Color|@C3:1,1,1;Light|Enabled|b1;Light|Shadows|b0;LineForce|ApplyAtCenterOfMass|b0;LineForce|InverseSquareLaw|b0;LineForce|Magnitude|n1000;LineForce|MaxForce|ninf;LineForce|ReactionForceEnabled|b0;LineHandleAdornment|Length|n5;LineHandleAdornment|Thickness|n1;LinearVelocity|Color|@BC:26;LinearVelocity|ForceLimitMode|@EN:ForceLimitMode.Magnitude;LinearVelocity|ForceLimitsEnabled|b1;LinearVelocity|LineDirection|@V3:1,0,0;LinearVelocity|LineVelocity|n-0;LinearVelocity|MaxAxesForce|@V3:1000,1000,1000;LinearVelocity|MaxForce|n1000;LinearVelocity|MaxPlanarAxesForce|@V2:1000,1000;LinearVelocity|PlaneVelocity|@V2:0,0;LinearVelocity|PrimaryTangentAxis|@V3:1,0,0;LinearVelocity|ReactionForceEnabled|b1;LinearVelocity|RelativeTo|@EN:ActuatorRelativeTo.World
+LinearVelocity|SecondaryTangentAxis|@V3:0,1,0;LinearVelocity|VectorVelocity|@V3:0,0,0;LinearVelocity|VelocityConstraintMode|@EN:VelocityConstraintMode.Vector;LocalizationTable|DevelopmentLanguage|sen-us;LocalizationTable|Root|@NIL;LocalizationTable|SourceLocaleId|sen-us;MakeupDescription|AssetId|n0;MakeupDescription|Instance|@NIL;MakeupDescription|MakeupType|@EN:MakeupType.Face;MakeupDescription|Order|n0;MarkerCurve|Length|n0;MaterialVariant|AlphaMode|@EN:AlphaMode.Opaque;MaterialVariant|BaseMaterial|@EN:Material.Plastic;MaterialVariant|CustomPhysicalProperties|@NIL;MaterialVariant|EmissiveStrength|n1;MaterialVariant|EmissiveTint|@C3:1,1,1;MaterialVariant|MaterialPattern|@EN:MaterialPattern.Regular;MaterialVariant|StudsPerTile|n10;MeshPart|BottomSurface|@EN:SurfaceType.Smooth;MeshPart|DoubleSided|b0;MeshPart|HasJointOffset|b0;MeshPart|HasSkinnedMesh|b0;MeshPart|JointOffset|@V3:0,0,0;MeshPart|MeshContent|@CN:;MeshPart|MeshId|s;MeshPart|TextureContent|@CN:;MeshPart|TextureID|s;Message|Text|s;Model|LevelOfDetail|@EN:ModelLevelOfDetail.Automatic;Model|ModelStreamingMode|@EN:ModelStreamingMode.Default;Model|PrimaryPart|@NIL;Model|WorldPivot|@CF:0,0,0,1,0,0,0,1,0,0,0,1;ModuleScript|LinkedSource|s;ModuleScript|Source|s;Motor|DesiredAngle|n0;Motor|MaxVelocity|n0;Motor6D|Transform|@CF:0,0,0,1,0,0,0,1,0,0,0,1;NegateOperation|Anchored|b1;NegateOperation|BottomSurface|@EN:SurfaceType.Smooth;NegateOperation|CanCollide|b0
+NegateOperation|Color|@C3:1,1,1;NegateOperation|Transparency|n0.10000000149011612;NoCollisionConstraint|Enabled|b1;NoCollisionConstraint|Part0|@NIL;NoCollisionConstraint|Part1|@NIL;NumberPose|Value|n0;NumberValue|Value|n0;ObjectValue|Value|@NIL;PVAdornment|Adornee|@NIL;Pants|PantsTemplate|s;Pants|PantsTemplateContent|@CN:;ParabolaAdornment|Color3|@C3:0.9490196704864502,0.9529412388801575,0.9529412388801575;Part|Shape|@EN:PartType.Block;Part|TopSurface|@EN:SurfaceType.Studs;PartAdornment|Adornee|@NIL;PartOperation|BottomSurface|@EN:SurfaceType.Smooth;PartOperation|Color|@C3:1,1,1;PartOperation|SmoothingAngle|n0;PartOperation|UsePartColor|b0;ParticleEmitter|Acceleration|@V3:0,0,0;ParticleEmitter|Brightness|n1;ParticleEmitter|Color|@CS:0,1,1,1,1,1,1,1;ParticleEmitter|Drag|n0;ParticleEmitter|EmissionDirection|@EN:NormalId.Top;ParticleEmitter|Enabled|b1;ParticleEmitter|FlipbookBlendFrames|b1;ParticleEmitter|FlipbookFramerate|@NR:1,1;ParticleEmitter|FlipbookIncompatible|sParticle texture must be 1024 by 1024 to use flipbooks.;ParticleEmitter|FlipbookLayout|@EN:ParticleFlipbookLayout.None;ParticleEmitter|FlipbookMode|@EN:ParticleFlipbookMode.Loop;ParticleEmitter|FlipbookSizeX|n1;ParticleEmitter|FlipbookSizeY|n1;ParticleEmitter|FlipbookStartRandom|b0;ParticleEmitter|Lifetime|@NR:5,10;ParticleEmitter|LightEmission|n0;ParticleEmitter|LightInfluence|n0;ParticleEmitter|LocalTransparencyModifier|n0;ParticleEmitter|LockedToPart|b0;ParticleEmitter|Orientation|@EN:ParticleOrientation.FacingCamera;ParticleEmitter|Rate|n20
+ParticleEmitter|RotSpeed|@NR:0,0;ParticleEmitter|Rotation|@NR:0,0;ParticleEmitter|Shape|@EN:ParticleEmitterShape.Box;ParticleEmitter|ShapeInOut|@EN:ParticleEmitterShapeInOut.Outward;ParticleEmitter|ShapePartial|n1;ParticleEmitter|ShapeStyle|@EN:ParticleEmitterShapeStyle.Volume;ParticleEmitter|Size|@NS:0,1,0,1,1,0;ParticleEmitter|Speed|@NR:5,5;ParticleEmitter|SpreadAngle|@V2:0,0;ParticleEmitter|Squash|@NS:0,0,0,1,0,0;ParticleEmitter|Texture|srbxasset://textures/particles/sparkles_main.dds;ParticleEmitter|TimeScale|n1;ParticleEmitter|Transparency|@NS:0,0,0,1,0,0;ParticleEmitter|VelocityInheritance|n0;ParticleEmitter|VelocitySpread|n0;ParticleEmitter|WindAffectsDrag|b0;ParticleEmitter|ZOffset|n0;ParticleEmitter2D|Acceleration|@V2:0,0;ParticleEmitter2D|Blend|n0;ParticleEmitter2D|Brightness|n1;ParticleEmitter2D|Drag|n0;ParticleEmitter2D|EmissionAngle|n0;ParticleEmitter2D|EmissionMode|@EN:ParticleEmitter2DEmissionMode.BoundingBox;ParticleEmitter2D|EmissionOffset|@V2:0,0;ParticleEmitter2D|EmissionSpread|@V2:0,0;ParticleEmitter2D|Enabled|b1;ParticleEmitter2D|FlipbookBlendFrames|b1;ParticleEmitter2D|FlipbookFramerate|@NR:1,1;ParticleEmitter2D|FlipbookLayout|@EN:ParticleFlipbookLayout.None;ParticleEmitter2D|FlipbookMode|@EN:ParticleFlipbookMode.Loop;ParticleEmitter2D|FlipbookSizeX|n1;ParticleEmitter2D|FlipbookSizeY|n1;ParticleEmitter2D|FlipbookStartRandom|b0;ParticleEmitter2D|Lifetime|@NR:5,10;ParticleEmitter2D|LightEmission|n0;ParticleEmitter2D|LockedToParent|b0;ParticleEmitter2D|Rate|n20;ParticleEmitter2D|RotSpeed|@NR:0,0;ParticleEmitter2D|Rotation|@NR:0,0;ParticleEmitter2D|Speed|@NR:64,64
+ParticleEmitter2D|SpreadAngle|n0;ParticleEmitter2D|TimeScale|n1;ParticleEmitter2D|ZIndex|n1;Path2D|Closed|b0;Path2D|Color3|@C3:0,0,0;Path2D|Thickness|n1;Path2D|Visible|b1;Path2D|ZIndex|n1;PathfindingLink|Attachment0|@NIL;PathfindingLink|Attachment1|@NIL;PathfindingLink|IsBidirectional|b1;PathfindingLink|Label|s;PathfindingModifier|Label|s;PathfindingModifier|PassThrough|b0;PhysicsActivitySensor|Active|b1;PhysicsActivitySensor|Position|@V3:0,0,0;PhysicsActivitySensor|Size|@V3:0,0,0;PitchShiftSoundEffect|Octave|n1.25;Plane|Color|@BC:194;PlaneConstraint|Color|@BC:194;Player|Character|@NIL;Player|ReplicationFocus|@NIL;Player|RespawnLocation|@NIL;Player|Team|@NIL;PluginAction|ActionId|s;PluginAction|AllowBinding|b1;PluginAction|StatusTip|s;PluginAction|Text|s;PointLight|Range|n8;Pose|CFrame|@CF:0,0,0,1,0,0,0,1,0,0,0,1;Pose|MaskWeight|n0;PoseBase|EasingDirection|@EN:PoseEasingDirection.In;PoseBase|EasingStyle|@EN:PoseEasingStyle.Linear;PoseBase|Weight|n1;PostEffect|Enabled|b1;PrismaticConstraint|Color|@BC:1009;ProceduralModel|GenerationError|s;ProceduralModel|Generator|@NIL;ProceduralModel|Size|@V3:12,12,12;ProximityPrompt|ActionText|sInteract
+ProximityPrompt|AutoLocalize|b1;ProximityPrompt|ClickablePrompt|b1;ProximityPrompt|Enabled|b1;ProximityPrompt|Exclusivity|@EN:ProximityPromptExclusivity.OnePerButton;ProximityPrompt|GamepadKeyCode|@EN:KeyCode.ButtonX;ProximityPrompt|HoldDuration|n0;ProximityPrompt|KeyboardKeyCode|@EN:KeyCode.E;ProximityPrompt|MaxActivationDistance|n10;ProximityPrompt|MaxIndicatorDistance|n0;ProximityPrompt|ObjectText|s;ProximityPrompt|RequiresLineOfSight|b1;ProximityPrompt|RootLocalizationTable|@NIL;ProximityPrompt|Style|@EN:ProximityPromptStyle.Default;ProximityPrompt|UIOffset|@V2:0,0;PyramidHandleAdornment|Height|n2;PyramidHandleAdornment|Shading|@EN:AdornShading.Default;PyramidHandleAdornment|Sides|n4;PyramidHandleAdornment|Size|n1;RTAnimationTracker|Active|b0;RTAnimationTracker|EnableFallbackAudioInput|b0;RTAnimationTracker|SessionName|s;RTAnimationTracker|TrackerMode|@EN:TrackerMode.None;RTAnimationTracker|TrackerType|@EN:TrackerType.Face;RayValue|Value|@RY:0,0,0,0,0,0;RealtimeMedia|AudioInputActive|b0;RealtimeMedia|IsConnected|b0;RealtimeMedia|IsConnectionWeak|b0;ReflectionMetadataClass|ExplorerImageIndex|n0;ReflectionMetadataClass|ExplorerOrder|n2147483647;ReflectionMetadataClass|Insertable|b1;ReflectionMetadataClass|PreferredParent|s;ReflectionMetadataItem|Browsable|b1;ReflectionMetadataItem|ClassCategory|s;ReflectionMetadataItem|ClientOnly|b0;ReflectionMetadataItem|Constraint|s;ReflectionMetadataItem|Deprecated|b0;ReflectionMetadataItem|EditingDisabled|b0;ReflectionMetadataItem|EditorType|s;ReflectionMetadataItem|FFlag|s;ReflectionMetadataItem|IsBackend|b0
+ReflectionMetadataItem|PropertyOrder|n5000;ReflectionMetadataItem|ScriptContext|s;ReflectionMetadataItem|ServerOnly|b0;ReflectionMetadataItem|SliderScaling|s;ReflectionMetadataItem|UIMaximum|n0;ReflectionMetadataItem|UIMinimum|n0;ReflectionMetadataItem|UINumTicks|n0;RenderingTest|CFrame|@CF:0,0,0,1,0,0,0,1,0,0,0,1;RenderingTest|ComparisonDiffThreshold|n10;RenderingTest|ComparisonMethod|@EN:RenderingTestComparisonMethod.psnr;RenderingTest|ComparisonPsnrThreshold|n50;RenderingTest|Description|s;RenderingTest|FieldOfView|n70;RenderingTest|Orientation|@V3:-0,0,0;RenderingTest|PerfTest|b0;RenderingTest|Position|@V3:0,0,0;RenderingTest|QualityAuto|b0;RenderingTest|QualityLevel|n21;RenderingTest|RenderingTestFrameCount|n20;RenderingTest|ShouldSkip|b0;RenderingTest|Ticket|s;RenderingTest|Timeout|n30;ReverbSoundEffect|DecayTime|n1.5;ReverbSoundEffect|Density|n1;ReverbSoundEffect|Diffusion|n1;ReverbSoundEffect|DryLevel|n-6;ReverbSoundEffect|WetLevel|n0;RigidConstraint|Color|@BC:194;RocketPropulsion|CartoonFactor|n0.699999988079071;RocketPropulsion|MaxSpeed|n30;RocketPropulsion|MaxThrust|n4000;RocketPropulsion|MaxTorque|@V3:400000,400000,0;RocketPropulsion|Target|@NIL;RocketPropulsion|TargetOffset|@V3:0,0,0;RocketPropulsion|TargetRadius|n4;RocketPropulsion|ThrustD|n0.0010000000474974513;RocketPropulsion|ThrustP|n5;RocketPropulsion|TurnD|n500;RocketPropulsion|TurnP|n3000;RodConstraint|Color|@BC:26
+RodConstraint|Length|n5;RodConstraint|LimitAngle0|n90;RodConstraint|LimitAngle1|n90;RodConstraint|LimitsEnabled|b0;RodConstraint|Thickness|n0.10000000149011612;RopeConstraint|Color|@BC:25;RopeConstraint|Length|n5;RopeConstraint|Restitution|n0;RopeConstraint|Thickness|n0.10000000149011612;RopeConstraint|WinchEnabled|b0;RopeConstraint|WinchForce|n10000;RopeConstraint|WinchResponsiveness|n45;RopeConstraint|WinchSpeed|n2;RopeConstraint|WinchTarget|n5;RotationCurve|Length|n0;ScreenGui|ClipToDeviceSafeArea|b1;ScreenGui|DisplayOrder|n0;ScreenGui|IgnoreGuiInset|b0;ScreenGui|SafeAreaCompatibility|@EN:SafeAreaCompatibility.FullscreenExtension;ScreenGui|ScreenInsets|@EN:ScreenInsets.CoreUISafeInsets;Script|Source|s;ScrollingFrame|AutomaticCanvasSize|@EN:AutomaticSize.None;ScrollingFrame|BottomImage|srbxasset://textures/ui/Scroll/scroll-bottom.png;ScrollingFrame|CanvasPosition|@V2:0,0;ScrollingFrame|CanvasSize|@U2:0,0,2,0;ScrollingFrame|ClipsDescendants|b1;ScrollingFrame|ElasticBehavior|@EN:ElasticBehavior.WhenScrollable;ScrollingFrame|HorizontalScrollBarInset|@EN:ScrollBarInset.None;ScrollingFrame|MidImage|srbxasset://textures/ui/Scroll/scroll-middle.png;ScrollingFrame|ScrollBarImageColor3|@C3:1,1,1;ScrollingFrame|ScrollBarImageTransparency|n0;ScrollingFrame|ScrollBarThickness|n12;ScrollingFrame|ScrollingDirection|@EN:ScrollingDirection.XY;ScrollingFrame|ScrollingEnabled|b1;ScrollingFrame|Selectable|b1;ScrollingFrame|SelectionGroup|b1;ScrollingFrame|TopImage|srbxasset://textures/ui/Scroll/scroll-top.png;ScrollingFrame|VerticalScrollBarInset|@EN:ScrollBarInset.None;ScrollingFrame|VerticalScrollBarPosition|@EN:VerticalScrollBarPosition.Right;Seat|Disabled|b0
+Seat|Occupant|@NIL;Seat|TopSurface|@EN:SurfaceType.Studs;SelectionBox|LineThickness|n0.15000000596046448;SelectionBox|SurfaceColor3|@C3:0.050980400294065475,0.4117650091648102,0.6745100021362305;SelectionBox|SurfaceTransparency|n1;SelectionLasso|Humanoid|@NIL;SelectionPartLasso|Part|@NIL;SelectionPointLasso|Point|@V3:0,0,0;SelectionSphere|SurfaceColor3|@C3:0.050980400294065475,0.4117650091648102,0.6745100021362305;SelectionSphere|SurfaceTransparency|n1;SensorBase|UpdateType|@EN:SensorUpdateType.OnRead;Shirt|ShirtTemplate|s;Shirt|ShirtTemplateContent|@CN:;ShirtGraphic|Color3|@C3:1,1,1;ShirtGraphic|Graphic|s;ShirtGraphic|TextureContent|@CN:;SkateboardController|Steer|n0;SkateboardController|Throttle|n0;SkateboardPlatform|Controller|@NIL;SkateboardPlatform|ControllingHumanoid|@NIL;SkateboardPlatform|Steer|n0;SkateboardPlatform|StickyWheels|b1;SkateboardPlatform|Throttle|n0;SkateboardPlatform|TopSurface|@EN:SurfaceType.Studs;Skin|SkinColor|@BC:226;Sky|CelestialBodiesShown|b1;Sky|MoonAngularSize|n11;Sky|MoonTextureId|srbxasset://sky/moon.jpg;Sky|SkyboxBk|srbxasset://textures/sky/sky512_bk.tex;Sky|SkyboxDn|srbxasset://textures/sky/sky512_dn.tex;Sky|SkyboxFt|srbxasset://textures/sky/sky512_ft.tex;Sky|SkyboxLf|srbxasset://textures/sky/sky512_lf.tex;Sky|SkyboxOrientation|@V3:0,0,0;Sky|SkyboxRt|srbxasset://textures/sky/sky512_rt.tex;Sky|SkyboxUp|srbxasset://textures/sky/sky512_up.tex;Sky|StarCount|n3000;Sky|SunAngularSize|n21;Sky|SunTextureId|srbxasset://sky/sun.jpg;SlidingBallConstraint|ActuatorType|@EN:ActuatorType.None;SlidingBallConstraint|LimitsEnabled|b0
+SlidingBallConstraint|LinearResponsiveness|n45;SlidingBallConstraint|LowerLimit|n0;SlidingBallConstraint|MotorMaxAcceleration|ninf;SlidingBallConstraint|MotorMaxForce|n0;SlidingBallConstraint|Restitution|n0;SlidingBallConstraint|ServoMaxForce|n0;SlidingBallConstraint|Size|n0.15000000596046448;SlidingBallConstraint|SoftlockServoUponReachingTarget|b0;SlidingBallConstraint|Speed|n0;SlidingBallConstraint|TargetPosition|n0;SlidingBallConstraint|UpperLimit|n5;SlidingBallConstraint|Velocity|n0;Smoke|Color|@C3:1,1,1;Smoke|Enabled|b1;Smoke|LocalTransparencyModifier|n0;Smoke|Opacity|n0.5;Smoke|RiseVelocity|n1;Smoke|Size|n1;Smoke|TimeScale|n1;Sound|AcousticSimulationEnabled|b1;Sound|AudioContent|@CN:;Sound|EmitterSize|n10;Sound|IsPaused|b1;Sound|LoopRegion|@NR:0,60000;Sound|Looped|b0;Sound|MaxDistance|n10000;Sound|MinDistance|n10;Sound|Pitch|n1;Sound|PlayOnRemove|b0;Sound|PlaybackRegion|@NR:0,60000;Sound|PlaybackRegionsEnabled|b0;Sound|PlaybackSpeed|n1;Sound|Playing|b0;Sound|RollOffMaxDistance|n10000;Sound|RollOffMinDistance|n10;Sound|RollOffMode|@EN:RollOffMode.Inverse;Sound|SoundGroup|@NIL;Sound|SoundId|s;Sound|Volume|n0.5;Sound|isPlaying|b0
+SoundEffect|Enabled|b1;SoundEffect|Priority|n0;SoundGroup|Volume|n0.5;Sparkles|Color|@C3:1,1,1;Sparkles|Enabled|b1;Sparkles|LocalTransparencyModifier|n0;Sparkles|SparkleColor|@C3:0.564706027507782,0.09803920239210129,1;Sparkles|TimeScale|n1;SpawnLocation|AllowTeamChangeOnTouch|b0;SpawnLocation|Duration|n10;SpawnLocation|Enabled|b1;SpawnLocation|Neutral|b1;SpawnLocation|TeamColor|@BC:194;SpawnLocation|TopSurface|@EN:SurfaceType.Studs;SpecialMesh|MeshType|@EN:MeshType.Head;SphereHandleAdornment|Radius|n1;SphereHandleAdornment|Shading|@EN:AdornShading.Default;SpotLight|Angle|n90;SpotLight|Face|@EN:NormalId.Front;SpotLight|Range|n16;SpringConstraint|Coils|n3;SpringConstraint|Color|@BC:200;SpringConstraint|Damping|n0;SpringConstraint|FreeLength|n1;SpringConstraint|LimitsEnabled|b0;SpringConstraint|MaxForce|ninf;SpringConstraint|MaxLength|n5;SpringConstraint|MinLength|n0;SpringConstraint|Radius|n0.4000000059604645;SpringConstraint|Stiffness|n0;SpringConstraint|Thickness|n0.10000000149011612;StarterGear|Loaded|b0;StateMachineTransitionDefinition|From|@NIL;StateMachineTransitionDefinition|Priority|n0;StateMachineTransitionDefinition|To|@NIL;StringValue|Value|s;StudioAttachment|AutoHideParent|b0;StudioAttachment|IsArrowVisible|b0;StudioAttachment|Offset|@V2:0,0;StudioAttachment|SourceAnchorPoint|@V2:0,0
+StudioAttachment|TargetAnchorPoint|@V2:0,0;StyleDerive|Priority|n0;StyleDerive|StyleSheet|@NIL;StyleLink|StyleSheet|@NIL;StyleQuery|IsActive|b0;StyleRule|Priority|n0;StyleRule|Selector|s;StyleRule|SelectorError|s;SunRaysEffect|Intensity|n0.25;SunRaysEffect|Spread|n1;SurfaceAppearance|AlphaMode|@EN:AlphaMode.Overlay;SurfaceAppearance|Color|@C3:1,1,1;SurfaceAppearance|ColorMapContent|@CN:;SurfaceAppearance|EmissiveMaskContent|@CN:;SurfaceAppearance|EmissiveStrength|n1;SurfaceAppearance|EmissiveTint|@C3:1,1,1;SurfaceAppearance|MetalnessMapContent|@CN:;SurfaceAppearance|NormalMapContent|@CN:;SurfaceAppearance|ResampleMode|@EN:ResamplerMode.Default;SurfaceAppearance|RoughnessMapContent|@CN:;SurfaceAppearance|SurfaceSlot|n-1;SurfaceGui|AlwaysOnTop|b0;SurfaceGui|Brightness|n1;SurfaceGui|CanvasSize|@V2:800,600;SurfaceGui|ClipsDescendants|b0;SurfaceGui|LightInfluence|n0;SurfaceGui|MaxDistance|n0;SurfaceGui|PixelsPerStud|n50;SurfaceGui|SizingMode|@EN:SurfaceGuiSizingMode.FixedSize;SurfaceGui|ToolPunchThroughDistance|n0;SurfaceGui|ZOffset|n0;SurfaceGuiBase|Active|b1;SurfaceGuiBase|Adornee|@NIL;SurfaceGuiBase|Face|@EN:NormalId.Front;SurfaceLight|Angle|n90;SurfaceLight|Face|@EN:NormalId.Front;SurfaceLight|Range|n16;SurfaceSelection|TargetSurface|@EN:NormalId.Right;SwimController|AccelerationTime|n0;SwimController|PitchMaxTorque|n10000
+SwimController|PitchSpeedFactor|n1;SwimController|RollMaxTorque|n10000;SwimController|RollSpeedFactor|n1;Team|AutoAssignable|b1;Team|AutoColorCharacters|b1;Team|Score|n0;Team|TeamColor|@BC:1;TeleportOptions|ReservedServerAccessCode|s;TeleportOptions|ReservedServerId|s;TeleportOptions|ServerInstanceId|s;TeleportOptions|ShouldReserveServer|b0;TeleportOptions|VipServerId|s;TerrainDetail|EmissiveStrength|n1;TerrainDetail|EmissiveTint|@C3:1,1,1;TerrainDetail|Face|@EN:TerrainFace.Side;TerrainDetail|MaterialPattern|@EN:MaterialPattern.Regular;TerrainDetail|StudsPerTile|n10;TerrainRegion|IsSmooth|b1;TerrainRegion|SizeInCells|@V3:1,1,1;TextBox|Active|b1;TextBox|ClearTextOnFocus|b1;TextBox|CursorPosition|n1;TextBox|Font|@EN:Font.Legacy;TextBox|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json~Regular~Normal;TextBox|FontSize|@EN:FontSize.Size8;TextBox|LineHeight|n1;TextBox|MaxVisibleGraphemes|n-1;TextBox|MultiLine|b0;TextBox|OpenTypeFeatures|s;TextBox|OpenTypeFeaturesError|s;TextBox|PlaceholderColor3|@C3:0.5,0.5,0.5;TextBox|PlaceholderText|s;TextBox|RichText|b0;TextBox|Selectable|b1;TextBox|SelectionStart|n-1;TextBox|ShowNativeInput|b1;TextBox|Text|sTextBox;TextBox|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;TextBox|TextDirection|@EN:TextDirection.Auto;TextBox|TextEditable|b1
+TextBox|TextScaled|b0;TextBox|TextSize|n8;TextBox|TextStrokeColor3|@C3:0,0,0;TextBox|TextStrokeTransparency|n1;TextBox|TextTransparency|n0;TextBox|TextTruncate|@EN:TextTruncate.None;TextBox|TextWrap|b0;TextBox|TextWrapped|b0;TextBox|TextXAlignment|@EN:TextXAlignment.Center;TextBox|TextYAlignment|@EN:TextYAlignment.Center;TextButton|Active|b1;TextButton|Font|@EN:Font.Legacy;TextButton|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json~Regular~Normal;TextButton|FontSize|@EN:FontSize.Size8;TextButton|LineHeight|n1;TextButton|MaxVisibleGraphemes|n-1;TextButton|OpenTypeFeatures|s;TextButton|OpenTypeFeaturesError|s;TextButton|RichText|b0;TextButton|Selectable|b1;TextButton|Text|sButton;TextButton|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;TextButton|TextDirection|@EN:TextDirection.Auto;TextButton|TextScaled|b0;TextButton|TextSize|n8;TextButton|TextStrokeColor3|@C3:0,0,0;TextButton|TextStrokeTransparency|n1;TextButton|TextTransparency|n0;TextButton|TextTruncate|@EN:TextTruncate.None;TextButton|TextWrap|b0;TextButton|TextWrapped|b0;TextButton|TextXAlignment|@EN:TextXAlignment.Center;TextButton|TextYAlignment|@EN:TextYAlignment.Center;TextChannel|AddPlayersOnJoin|b0;TextChannel|DirectChatRequester|@NIL;TextChannelWindow|FontFace|@FN:rbxasset://fonts/families/BuilderSans.json~Medium~Normal;TextChannelWindow|Target|@NIL;TextChannelWindow|UseDefaultFont|b1;TextChatCommand|AutocompleteVisible|b1;TextChatCommand|Enabled|b1
+TextChatCommand|PrimaryAlias|s;TextChatCommand|SecondaryAlias|s;TextChatMessageProperties|PrefixText|s;TextChatMessageProperties|Text|s;TextChatMessageProperties|Translation|s;TextDocument|TextContent|@CN:;TextGenerator|Seed|n0;TextGenerator|SystemPrompt|s;TextGenerator|Temperature|n0.699999988079071;TextGenerator|TopP|n0.8999999761581421;TextLabel|Font|@EN:Font.Legacy;TextLabel|FontFace|@FN:rbxasset://fonts/families/LegacyArial.json~Regular~Normal;TextLabel|FontSize|@EN:FontSize.Size8;TextLabel|LineHeight|n1;TextLabel|MaxVisibleGraphemes|n-1;TextLabel|OpenTypeFeatures|s;TextLabel|OpenTypeFeaturesError|s;TextLabel|RichText|b0;TextLabel|Text|sLabel;TextLabel|TextColor3|@C3:0.10588199645280838,0.1647060066461563,0.20784300565719604;TextLabel|TextDirection|@EN:TextDirection.Auto;TextLabel|TextScaled|b0;TextLabel|TextSize|n8;TextLabel|TextStrokeColor3|@C3:0,0,0;TextLabel|TextStrokeTransparency|n1;TextLabel|TextTransparency|n0;TextLabel|TextTruncate|@EN:TextTruncate.None;TextLabel|TextWrap|b0;TextLabel|TextWrapped|b0;TextLabel|TextXAlignment|@EN:TextXAlignment.Center;TextLabel|TextYAlignment|@EN:TextYAlignment.Center;Texture|OffsetStudsU|n0;Texture|OffsetStudsV|n0;Texture|StudsPerTileU|n2;Texture|StudsPerTileV|n2;Tool|CanBeDropped|b1;Tool|Enabled|b1;Tool|Grip|@CF:0,0,0,1,0,0,0,1,0,0,0,1;Tool|GripForward|@V3:-0,-0,-1;Tool|GripPos|@V3:0,0,0
+Tool|GripRight|@V3:1,0,0;Tool|GripUp|@V3:0,1,0;Tool|ManualActivationOnly|b0;Tool|RequiresHandle|b1;Tool|ToolTip|s;Torque|RelativeTo|@EN:ActuatorRelativeTo.Attachment0;Torque|Torque|@V3:0,0,0;TorsionSpringConstraint|Coils|n8;TorsionSpringConstraint|Color|@BC:200;TorsionSpringConstraint|Damping|n0.009999999776482582;TorsionSpringConstraint|LimitEnabled|b0;TorsionSpringConstraint|LimitsEnabled|b0;TorsionSpringConstraint|MaxAngle|n45;TorsionSpringConstraint|MaxTorque|ninf;TorsionSpringConstraint|Radius|n0.4000000059604645;TorsionSpringConstraint|Restitution|n0;TorsionSpringConstraint|Stiffness|n100;Trail|Attachment0|@NIL;Trail|Attachment1|@NIL;Trail|Brightness|n1;Trail|Color|@CS:0,1,1,1,1,1,1,1;Trail|Enabled|b1;Trail|FaceCamera|b0;Trail|Lifetime|n2;Trail|LightEmission|n0;Trail|LightInfluence|n0;Trail|LocalTransparencyModifier|n0;Trail|MaxLength|n0;Trail|MinLength|n0.10000000149011612;Trail|Texture|s;Trail|TextureContent|@CN:;Trail|TextureLength|n1;Trail|TextureMode|@EN:TextureMode.Stretch;Trail|Transparency|@NS:0,0.5,0,1,0.5,0;Trail|WidthScale|@NS:0,1,0,1,1,0;TremoloSoundEffect|Depth|n1;TremoloSoundEffect|Duty|n0.5;TremoloSoundEffect|Frequency|n5;TrussPart|BackSurface|@EN:SurfaceType.Universal;TrussPart|BottomSurface|@EN:SurfaceType.Universal
+TrussPart|FrontSurface|@EN:SurfaceType.Universal;TrussPart|LeftSurface|@EN:SurfaceType.Universal;TrussPart|RightSurface|@EN:SurfaceType.Universal;TrussPart|Size|@V3:2,2,2;TrussPart|Style|@EN:Style.AlternatingSupports;TrussPart|TopSurface|@EN:SurfaceType.Universal;Tween|Instance|@NIL;UIAspectRatioConstraint|AspectRatio|n1;UIAspectRatioConstraint|AspectType|@EN:AspectType.FitWithinMaxSize;UIAspectRatioConstraint|DominantAxis|@EN:DominantAxis.Width;UIBlur|Color|@C3:1,1,1;UIBlur|Enabled|b1;UIBlur|Strength|@EN:UIBlurStrength.Heavy;UIBlur|Transparency|n0;UICorner|BottomLeftRadius|@U1:0,8;UICorner|BottomRightRadius|@U1:0,8;UICorner|CornerRadius|@U1:0,8;UICorner|TopLeftRadius|@U1:0,8;UICorner|TopRightRadius|@U1:0,8;UIDragDetector|ActivatedCursorIcon|s;UIDragDetector|ActivatedCursorIconContent|@CN:;UIDragDetector|BoundingBehavior|@EN:UIDragDetectorBoundingBehavior.Automatic;UIDragDetector|BoundingUI|@NIL;UIDragDetector|CursorIcon|s;UIDragDetector|CursorIconContent|@CN:;UIDragDetector|DragAxis|@V2:1,0;UIDragDetector|DragRelativity|@EN:UIDragDetectorDragRelativity.Absolute;UIDragDetector|DragRotation|n0;UIDragDetector|DragSpace|@EN:UIDragDetectorDragSpace.Parent;UIDragDetector|DragStyle|@EN:UIDragDetectorDragStyle.TranslatePlane;UIDragDetector|DragUDim2|@U2:0,0,0,0;UIDragDetector|Enabled|b1;UIDragDetector|MaxDragAngle|n0;UIDragDetector|MaxDragTranslation|@U2:0,0,0,0;UIDragDetector|MinDragAngle|n0;UIDragDetector|MinDragTranslation|@U2:0,0,0,0;UIDragDetector|ReferenceUIInstance|@NIL;UIDragDetector|ResponseStyle|@EN:UIDragDetectorResponseStyle.Offset;UIDragDetector|Selectable|b1;UIDragDetector|SelectionModeDragSpeed|@U2:0,300,0,300
+UIDragDetector|SelectionModeRotateSpeed|n90;UIDragDetector|UIDragSpeedAxisMapping|@EN:UIDragSpeedAxisMapping.XY;UIFlexItem|FlexMode|@EN:UIFlexMode.None;UIFlexItem|GrowRatio|n0;UIFlexItem|ItemLineAlignment|@EN:ItemLineAlignment.Automatic;UIFlexItem|ShrinkRatio|n0;UIGradient|Color|@CS:0,1,1,1,1,1,1,1;UIGradient|Enabled|b1;UIGradient|Offset|@V2:0,0;UIGradient|Rotation|n0;UIGradient|Scale|n1;UIGradient|TileMode|@EN:GradientTileMode.Clamp;UIGradient|Transparency|@NS:0,0,0,1,0,0;UIGradient|Type|@EN:GradientType.Linear;UIGridLayout|CellPadding|@U2:0,5,0,5;UIGridLayout|CellSize|@U2:0,100,0,100;UIGridLayout|FillDirection|@EN:FillDirection.Horizontal;UIGridLayout|FillDirectionMaxCells|n0;UIGridLayout|StartCorner|@EN:StartCorner.TopLeft;UIGridStyleLayout|FillDirection|@EN:FillDirection.Vertical;UIGridStyleLayout|HorizontalAlignment|@EN:HorizontalAlignment.Left;UIGridStyleLayout|SortOrder|@EN:SortOrder.Name;UIGridStyleLayout|VerticalAlignment|@EN:VerticalAlignment.Top;UIListLayout|FillDirection|@EN:FillDirection.Vertical;UIListLayout|HorizontalFlex|@EN:UIFlexAlignment.None;UIListLayout|ItemLineAlignment|@EN:ItemLineAlignment.Automatic;UIListLayout|Padding|@U1:0,0;UIListLayout|VerticalFlex|@EN:UIFlexAlignment.None;UIListLayout|Wraps|b0;UIPadding|PaddingBottom|@U1:0,0;UIPadding|PaddingLeft|@U1:0,0;UIPadding|PaddingRight|@U1:0,0;UIPadding|PaddingTop|@U1:0,0;UIPageLayout|Animated|b1;UIPageLayout|Circular|b0;UIPageLayout|EasingDirection|@EN:EasingDirection.Out;UIPageLayout|EasingStyle|@EN:EasingStyle.Back;UIPageLayout|FillDirection|@EN:FillDirection.Horizontal;UIPageLayout|GamepadInputEnabled|b1;UIPageLayout|Padding|@U1:0,0
+UIPageLayout|ScrollWheelInputEnabled|b1;UIPageLayout|TouchInputEnabled|b1;UIPageLayout|TweenTime|n1;UIScale|Scale|n1;UIShadow|BlurRadius|@U1:0,0;UIShadow|Color|@C3:0,0,0;UIShadow|Enabled|b1;UIShadow|Inset|b0;UIShadow|Mode|@EN:ApplyShadowMode.Shape;UIShadow|Offset|@U2:0,0,0,0;UIShadow|ShowBehindParent|b1;UIShadow|Spread|@U2:0,0,0,0;UIShadow|Transparency|n0;UIShadow|ZIndex|n-1;UISizeConstraint|MaxSize|@V2:inf,inf;UISizeConstraint|MinSize|@V2:0,0;UIStroke|ApplyStrokeMode|@EN:ApplyStrokeMode.Contextual;UIStroke|BorderOffset|@U1:0,0;UIStroke|BorderStrokePosition|@EN:BorderStrokePosition.Outer;UIStroke|Color|@C3:0,0,0;UIStroke|Enabled|b1;UIStroke|LineJoinMode|@EN:LineJoinMode.Round;UIStroke|StrokeSizingMode|@EN:StrokeSizingMode.FixedSize;UIStroke|Thickness|n1;UIStroke|Transparency|n0;UIStroke|ZIndex|n1;UITableLayout|FillEmptySpaceColumns|b0;UITableLayout|FillEmptySpaceRows|b0;UITableLayout|MajorAxis|@EN:TableMajorAxis.RowMajor;UITableLayout|Padding|@U2:0,0,0,0;UITextSizeConstraint|MaxTextSize|n100;UITextSizeConstraint|MinTextSize|n1;UnionOperation|BottomSurface|@EN:SurfaceType.Smooth;UnionOperation|Color|@C3:1,1,1;UniversalConstraint|Color|@BC:1009;UniversalConstraint|LimitsEnabled|b0;UniversalConstraint|MaxAngle|n45;UniversalConstraint|Radius|n0.20000000298023224;UniversalConstraint|Restitution|n0;ValueCurve|Length|n0
+ValueCurve|ValueType|snil;Vector3Value|Value|@V3:0,0,0;VectorForce|ApplyAtCenterOfMass|b0;VectorForce|Force|@V3:1000,0,0;VectorForce|RelativeTo|@EN:ActuatorRelativeTo.Attachment0;VehicleSeat|AreHingesDetected|n0;VehicleSeat|Disabled|b0;VehicleSeat|HeadsUpDisplay|b1;VehicleSeat|MaxSpeed|n25;VehicleSeat|Occupant|@NIL;VehicleSeat|Steer|n0;VehicleSeat|SteerFloat|n0;VehicleSeat|Throttle|n0;VehicleSeat|ThrottleFloat|n0;VehicleSeat|TopSurface|@EN:SurfaceType.Studs;VehicleSeat|Torque|n10;VehicleSeat|TurnSpeed|n1;VelocityMotor|DesiredAngle|n0;VelocityMotor|Hole|@NIL;VelocityMotor|MaxVelocity|n0;VideoDeviceInput|Active|b0;VideoDeviceInput|CameraId|s;VideoDeviceInput|CaptureQuality|@EN:VideoDeviceCaptureQuality.Default;VideoDisplay|ResampleMode|@EN:ResamplerMode.Default;VideoDisplay|ScaleType|@EN:ScaleType.Stretch;VideoDisplay|TileSize|@U2:1,0,1,0;VideoDisplay|VideoColor3|@C3:1,1,1;VideoDisplay|VideoRectOffset|@V2:0,0;VideoDisplay|VideoRectSize|@V2:0,0;VideoDisplay|VideoTransparency|n0;VideoFrame|InternalVideoUsage|@EN:InternalVideoUsage.Default;VideoFrame|Looped|b0;VideoFrame|MaximumResolution|@EN:VideoSampleSize.Full;VideoFrame|Playing|b0;VideoFrame|RollOffMaxDistance|n10000;VideoFrame|RollOffMinDistance|n1;VideoFrame|RollOffMode|@EN:RollOffMode.Inverse;VideoFrame|Video|s;VideoFrame|VideoContent|@CN:;VideoFrame|Volume|n1
+VideoPlayer|InternalVideoUsage|@EN:InternalVideoUsage.Default;VideoPlayer|Looping|b0;VideoPlayer|MaximumResolution|@EN:VideoSampleSize.Full;VideoPlayer|PlaybackSpeed|n1;VideoPlayer|VideoContent|@CN:;VideoPlayer|Volume|n1;ViewportFrame|Ambient|@C3:0.784313976764679,0.784313976764679,0.784313976764679;ViewportFrame|CurrentCamera|@NIL;ViewportFrame|ImageColor3|@C3:1,1,1;ViewportFrame|ImageTransparency|n0;ViewportFrame|LightColor|@C3:0.549019992351532,0.549019992351532,0.549019992351532;ViewportFrame|LightDirection|@V3:-1,-1,-1;WeldConstraint|Active|b0;WeldConstraint|Enabled|b1;WeldConstraint|Part0|@NIL;WeldConstraint|Part1|@NIL;Wire|Connected|b0;Wire|SourceInstance|@NIL;Wire|SourceName|sOutput;Wire|TargetInstance|@NIL;Wire|TargetName|sInput;WireframeHandleAdornment|Scale|@V3:1,1,1;WireframeHandleAdornment|Thickness|n1;WorldModel|UseWorkspaceCollisionGroups|b0;WrapLayer|AutoSkin|@EN:WrapLayerAutoSkin.Disabled;WrapLayer|BindOffset|@CF:0,0,0,1,0,0,0,1,0,0,0,1;WrapLayer|Enabled|b1;WrapLayer|Order|n1;WrapLayer|Puffiness|n1;WrapLayer|ReferenceMeshContent|@CN:;WrapLayer|ReferenceMeshId|s;WrapLayer|ReferenceOrigin|@CF:0,0,0,1,0,0,0,1,0,0,0,1;WrapLayer|ReferenceOriginWorld|@CF:0,0,0,1,0,0,0,1,0,0,0,1;WrapLayer|ShrinkFactor|n0;WrapLayer|TargetShaping|n0;WrapTarget|Stiffness|n0;WrapTextureTransfer|ReferenceCageMeshContent|@CN:;WrapTextureTransfer|UVMaxBound|@V2:-inf,-inf;WrapTextureTransfer|UVMinBound|@V2:inf,inf
 ]]
 -- [v1.7 GENERATED:defaults END]
 robloxApi.dumpDefault = function(className, key)
@@ -8701,8 +8752,95 @@ robloxApi.dumpDefault = function(className, key)
     end
     return nil, false
 end
+-- [v1.7] Path2D geometry (Creator Hub reference, 2026-10-30): each segment is a cubic Bezier
+-- P(i) -> P(i) + RightTangent(i) -> P(i+1) + LeftTangent(i+1) -> P(i+1), evaluated component-wise
+-- in UDim2 space; parameter space gives every segment an equal share of t, arc-length space
+-- spaces t evenly by distance (scale components weighted by the container's absolute size).
+robloxApi.p2d = {}
+do
+    local P = robloxApi.p2d
+    local SAMPLES = 256
+    local function comps(u) return {u.X.Scale, u.X.Offset, u.Y.Scale, u.Y.Offset} end
+    function P.segments(points, closed)
+        local segs, n = {}, #points
+        local function add(a, b)
+            local A, D = comps(a.Position), comps(b.Position)
+            local rt, lt = comps(a.RightTangent), comps(b.LeftTangent)
+            local B, C = {}, {}
+            for i = 1, 4 do B[i] = A[i] + rt[i]; C[i] = D[i] + lt[i] end
+            segs[#segs + 1] = {A, B, C, D}
+        end
+        for i = 1, n - 1 do add(points[i], points[i + 1]) end
+        if closed and n >= 3 then add(points[n], points[1]) end
+        return segs
+    end
+    function P.eval(s, u)
+        local v = 1 - u
+        local a, b, c, d = v * v * v, 3 * v * v * u, 3 * v * u * u, u * u * u
+        local r = {}
+        for i = 1, 4 do r[i] = a * s[1][i] + b * s[2][i] + c * s[3][i] + d * s[4][i] end
+        return r
+    end
+    function P.deriv(s, u)
+        local v = 1 - u
+        local r = {}
+        for i = 1, 4 do r[i] = 3 * v * v * (s[2][i] - s[1][i]) + 6 * v * u * (s[3][i] - s[2][i]) + 3 * u * u * (s[4][i] - s[3][i]) end
+        return r
+    end
+    function P.locate(segs, t)
+        t = math.clamp(t, 0, 1)
+        local x = t * #segs
+        local i = math.floor(x)
+        if i >= #segs then i = #segs - 1 end
+        return segs[i + 1], x - i
+    end
+    local function lengths(segs, sx, sy)
+        local all, total = {}, 0
+        for si, s in ipairsFunction(segs) do
+            local L, prev, acc = {}, P.eval(s, 0), 0
+            for k = 1, SAMPLES do
+                local cur = P.eval(s, k / SAMPLES)
+                local dx = (cur[1] - prev[1]) * sx + (cur[2] - prev[2])
+                local dy = (cur[3] - prev[3]) * sy + (cur[4] - prev[4])
+                acc = acc + math.sqrt(dx * dx + dy * dy)
+                L[k] = acc
+                prev = cur
+            end
+            all[si] = L
+            total = total + acc
+        end
+        return all, total
+    end
+    function P.length(segs, sx, sy) local _, total = lengths(segs, sx, sy); return total end
+    function P.arcLocate(segs, t, sx, sy)
+        local all, total = lengths(segs, sx, sy)
+        if total <= 0 then return P.locate(segs, t) end
+        local target, base = math.clamp(t, 0, 1) * total, 0
+        for si, s in ipairsFunction(segs) do
+            local L = all[si]
+            local segLen = L[SAMPLES]
+            if target <= base + segLen or si == #segs then
+                local want, prevAcc = target - base, 0
+                for k = 1, SAMPLES do
+                    if L[k] >= want then
+                        local frac = (L[k] > prevAcc) and (want - prevAcc) / (L[k] - prevAcc) or 0
+                        return s, ((k - 1) + frac) / SAMPLES
+                    end
+                    prevAcc = L[k]
+                end
+                return s, 1
+            end
+            base = base + segLen
+        end
+        return segs[#segs], 1
+    end
+end
+-- [v1.7] callback members of the 0.745 API dump (assign-only members)
+robloxApi.callbacks = {AdGui={OnAdEvent=1},AdService={OnImmersiveBrandedAdDisclosureButtonActivated=1,onDemandVideoPlayInUI=1},BindableFunction={OnInvoke=1},DataModel={OnClose=1},GuiService={SendCoreUiNotification=1},IntegrityService={EvaluatePlayerDeviceTrust=1},MarketplaceService={ProcessReceipt=1},Plugin={ProcessAssetInsertionDrag=1,ProcessAssetInsertionDrop=1},RemoteFunction={OnClientInvoke=1,OnServerInvoke=1},ScriptDebuggerService={OnStopped=1},SocialService={OnCallInviteInvoked=1},TextChannel={OnIncomingMessage=1,ShouldDeliverCallback=1},TextChatService={OnBubbleAdded=1,OnChatWindowAdded=1,OnIncomingMessage=1}}
+robloxApi.callbackNames = {}
+for _, set in pairs(robloxApi.callbacks) do for n in pairs(set) do robloxApi.callbackNames[n] = true end end
 -- [v1.7] decoder for the typed default literals: @NIL, @EN:Enum.Item, @V3/@V2/@C3:a,b,c, @U2, @U1,
--- @CF (12 numbers), @NR, @RC, @BC:number, @NS (t,v,e)*, @CS (t,r,g,b)*, @FN:family;Weight;Style,
+-- @CF (12 numbers), @NR, @RC, @BC:number, @NS (t,v,e)*, @CS (t,r,g,b)*, @FN:family~Weight~Style,
 -- @FA / @AX bitmasks, @CN (Content.none), @RY (origin, direction).
 robloxApi.decodeDefaultSpec = function(spec)
     local tag, payload = spec:match("^@(%u[%u%d]%u?):?(.*)$")
@@ -8733,7 +8871,7 @@ robloxApi.decodeDefaultSpec = function(spec)
             for i = 1, #nums, 4 do kps[#kps + 1] = ColorSequenceKeypoint.new(nums[i], Color3.new(nums[i + 1], nums[i + 2], nums[i + 3])) end
             return ColorSequence.new(kps)
         elseif tag == "FN" then
-            local fam, w, s = payload:match("^([^;]*);([^;]*);([^;]*)$")
+            local fam, w, s = payload:match("^([^~]*)~([^~]*)~([^~]*)$")
             return Font.new(fam, Enum.FontWeight[w], Enum.FontStyle[s])
         elseif tag == "FA" or tag == "AX" then
             local mask, list = nums[1] or 0, {}
@@ -8745,6 +8883,7 @@ robloxApi.decodeDefaultSpec = function(spec)
             end
             return (tag == "FA" and Faces or Axes).new(table.unpack(list))
         elseif tag == "CN" then return Content.none
+        elseif tag == "SC" then return SecurityCapabilities.new()
         elseif tag == "RY" then return Ray.new(Vector3.new(nums[1], nums[2], nums[3]), Vector3.new(nums[4], nums[5], nums[6]))
         end
     end)
@@ -13544,15 +13683,28 @@ createProxyObject = function(objName, isGlobal, parentProxy)
         emitOutput(string.format("%s:Fire(%s)", eventPath, table.concat(serializedArgs, ", ")))
         
         local signalPath = eventPath .. ".Event"
+        -- [v1.7] tables cross a bindable boundary as copies without metatables
+        local _cargs = table.pack(...)
+        do
+            local function copy(v, seen)
+                if typeFunction(v) ~= "table" or isProxy(v) then return v end
+                if seen[v] then return seen[v] end
+                local out = {}
+                seen[v] = out
+                for k2, v2 in pairsFunction(v) do out[copy(k2, seen)] = copy(v2, seen) end
+                return out
+            end
+            for i = 1, _cargs.n do _cargs[i] = copy(_cargs[i], {}) end
+        end
         if dumperState.event_callbacks and dumperState.event_callbacks[signalPath] then
             for _, cb in ipairsFunction(dumperState.event_callbacks[signalPath]) do
-                xpcallFunction(function() cb(table.unpack(args)) end, function() end)
+                xpcallFunction(function() cb(table.unpack(_cargs, 1, _cargs.n)) end, function() end)
             end
         end
         -- [PATCH:BINDABLE-FIRE] connections made through the per-instance signal key (every created BindableEvent)
         -- were never invoked: Fire only looked at the registry-path key, so Event:Connect/Once/Wait never saw Fire.
         if rawget(proxy, "__created_instance") then
-            robloxApi.fireKey(robloxApi.sigKey(proxy, "Event"), table.unpack(table.pack(...), 1, select("#", ...)))
+            robloxApi.fireKey(robloxApi.sigKey(proxy, "Event"), table.unpack(_cargs, 1, _cargs.n))
         end
     end
     serviceMethods.Invoke = function(self, ...)
@@ -15281,6 +15433,139 @@ createProxyObject = function(objName, isGlobal, parentProxy)
         if bcf then return bcf end
         return CFrame.new(0, 0, 0)
     end
+    -- [v1.7] Path2D control points and curve queries
+    do
+        local function p2dPoints()
+            local ps = dumperState.property_store[proxy]
+            if not ps then ps = {}; dumperState.property_store[proxy] = ps end
+            local pts = rawget(ps, "__p2d_points")
+            if not pts then pts = {}; rawset(ps, "__p2d_points", pts) end
+            return pts, ps
+        end
+        local function isPath2D() local ps = dumperState.property_store[proxy]; return ps ~= nil and ps.ClassName == "Path2D" end
+        local function needPoint(v, fname, argn)
+            local okT, t = pcallFunction(_G.typeof, v)
+            if not (okT and t == "Path2DControlPoint") then
+                error("invalid argument #" .. argn .. " to '" .. fname .. "' (Path2DControlPoint expected, got " .. (v == nil and "nil" or tostring(okT and t or typeFunction(v))) .. ")", 3)
+            end
+        end
+        local function needIndex(i, fname)
+            if typeFunction(i) ~= "number" then error("invalid argument #1 to '" .. fname .. "' (number expected, got " .. (i == nil and "nil" or typeFunction(i)) .. ")", 3) end
+            return math.floor(i)
+        end
+        local function changed() pcallFunction(robloxApi.fireSig, proxy, "ControlPointChanged") end
+        local function log(m, ...)
+            local parts = {}
+            for k = 1, select("#", ...) do parts[k] = serializeValue((select(k, ...))) end
+            emitOutput(string.format("%s:%s(%s)", dumperState.registry[proxy] or "path2D", m, table.concat(parts, ", ")))
+        end
+        local function containerSize()
+            local ok, sz = pcallFunction(function() return proxy.Parent.AbsoluteSize end)
+            if ok and robloxApi.opTn(sz) == "Vector2" then return sz.X, sz.Y end
+            return 0, 0
+        end
+        local function curve(fname)
+            local pts, ps = p2dPoints()
+            if #pts < 2 then error(fname .. " requires the Path2D to have at least two control points", 3) end
+            return robloxApi.p2d.segments(pts, ps.Closed == true)
+        end
+        serviceMethods.GetControlPoints = function(self)
+            local out = {}
+            for i, v in ipairsFunction((p2dPoints())) do out[i] = v end
+            return out
+        end
+        serviceMethods.GetControlPoint = function(self, i)
+            local pts = p2dPoints()
+            i = needIndex(i, "GetControlPoint")
+            if i < 1 or i > #pts then error("GetControlPoint: index " .. tostring(i) .. " is out of bounds", 2) end
+            return pts[i]
+        end
+        serviceMethods.GetMaxControlPoints = function(self) return 100 end
+        serviceMethods.SetControlPoints = function(self, list)
+            if typeFunction(list) ~= "table" then error("invalid argument #1 to 'SetControlPoints' (Array expected, got " .. (list == nil and "nil" or typeFunction(list)) .. ")", 2) end
+            if #list > 100 then error("SetControlPoints: a Path2D supports at most 100 control points", 2) end
+            for i = 1, #list do needPoint(list[i], "SetControlPoints", 1) end
+            local pts = p2dPoints()
+            for k = #pts, 1, -1 do pts[k] = nil end
+            for i = 1, #list do pts[i] = list[i] end
+            log("SetControlPoints", list)
+            changed()
+        end
+        serviceMethods.InsertControlPoint = function(self, i, point)
+            local pts = p2dPoints()
+            i = needIndex(i, "InsertControlPoint")
+            needPoint(point, "InsertControlPoint", 2)
+            log("InsertControlPoint", i, point)
+            if i < 1 or i > #pts + 1 or #pts >= 100 then return end -- out of range: the engine only warns
+            table.insert(pts, i, point)
+            changed()
+        end
+        serviceMethods.RemoveControlPoint = function(self, i)
+            local pts = p2dPoints()
+            i = needIndex(i, "RemoveControlPoint")
+            log("RemoveControlPoint", i)
+            if i < 1 or i > #pts then return end
+            table.remove(pts, i)
+            changed()
+        end
+        serviceMethods.UpdateControlPoint = function(self, i, point)
+            local pts = p2dPoints()
+            i = needIndex(i, "UpdateControlPoint")
+            needPoint(point, "UpdateControlPoint", 2)
+            log("UpdateControlPoint", i, point)
+            if i < 1 or i > #pts then return end
+            pts[i] = point
+            changed()
+        end
+        serviceMethods.GetPositionOnCurve = function(self, t)
+            local seg, u = robloxApi.p2d.locate(curve("GetPositionOnCurve"), tonumber(t) or 0)
+            local r = robloxApi.p2d.eval(seg, u)
+            return UDim2.new(r[1], r[2], r[3], r[4])
+        end
+        serviceMethods.GetPositionOnCurveArcLength = function(self, t)
+            local sx, sy = containerSize()
+            local seg, u = robloxApi.p2d.arcLocate(curve("GetPositionOnCurveArcLength"), tonumber(t) or 0, sx, sy)
+            local r = robloxApi.p2d.eval(seg, u)
+            return UDim2.new(r[1], r[2], r[3], r[4])
+        end
+        serviceMethods.GetTangentOnCurve = function(self, t)
+            local sx, sy = containerSize()
+            local seg, u = robloxApi.p2d.locate(curve("GetTangentOnCurve"), tonumber(t) or 0)
+            local d = robloxApi.p2d.deriv(seg, u)
+            return Vector2.new(d[1] * sx + d[2], d[3] * sy + d[4])
+        end
+        serviceMethods.GetTangentOnCurveArcLength = function(self, t)
+            local sx, sy = containerSize()
+            local seg, u = robloxApi.p2d.arcLocate(curve("GetTangentOnCurveArcLength"), tonumber(t) or 0, sx, sy)
+            local d = robloxApi.p2d.deriv(seg, u)
+            local v = Vector2.new(d[1] * sx + d[2], d[3] * sy + d[4])
+            if v.Magnitude > 0 then return v.Unit end
+            return v
+        end
+        serviceMethods.GetLength = function(self)
+            if not isPath2D() then return 0 end
+            local pts, ps = p2dPoints()
+            if #pts < 2 then return 0 end
+            local sx, sy = containerSize()
+            return robloxApi.p2d.length(robloxApi.p2d.segments(pts, ps.Closed == true), sx, sy)
+        end
+        serviceMethods.GetBoundingRect = function(self)
+            local pts, ps = p2dPoints()
+            if not isPath2D() or #pts == 0 then return Rect.new(0, 0, 0, 0) end
+            local sx, sy = containerSize()
+            local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+            local function take(r)
+                local x, y = r[1] * sx + r[2], r[3] * sy + r[4]
+                x0, y0, x1, y1 = math.min(x0, x), math.min(y0, y), math.max(x1, x), math.max(y1, y)
+            end
+            if #pts == 1 then local u = pts[1].Position; take({u.X.Scale, u.X.Offset, u.Y.Scale, u.Y.Offset}) end
+            for _, seg in ipairsFunction(robloxApi.p2d.segments(pts, ps.Closed == true)) do
+                for k = 0, 32 do take(robloxApi.p2d.eval(seg, k / 32)) end
+            end
+            local half = (tonumber(ps.Thickness) or 1) / 2
+            return Rect.new(x0 - half, y0 - half, x1 + half, y1 + half)
+        end
+    end
     -- [PATCH:MODEL-GEOM] bounding box / extents / PivotTo / ScaleTo computed from the model's part descendants
     robloxApi.modelParts = function(root)
         local kids, out, queue, qi = {}, {}, {root}, 1
@@ -15505,7 +15790,7 @@ createProxyObject = function(objName, isGlobal, parentProxy)
         if typeFunction(str) ~= "string" then error("Unable to cast to string", 2) end
         local servicePath = dumperState.registry[proxy] or "HttpService"
         emitOutput(string.format("%s:UrlEncode(%s)", servicePath, serializeValue(str)))
-        return string.gsub(str, "([^%w _%-%.~])", function(c) return string.format("%%%02X", string.byte(c)) end):gsub(" ", "+")
+        return (string.gsub(str, "[^%w%-_~]", function(c) return string.format("%%%02X", string.byte(c)) end)) -- [v1.7]
     end
     serviceMethods.HttpGet = function(self, url, nocache)
         local selfPath = dumperState.registry[proxy] or formattedName or "game"
@@ -16595,6 +16880,19 @@ createProxyObject = function(objName, isGlobal, parentProxy)
                 end
             end
             if _kcn then error(toStringFunction(key) .. " is not a valid member of " .. _kcn, 2) end
+        end
+        -- [v1.7] callback members are write-only: reading one raises the engine error (API dump 0.745)
+        if typeFunction(key) == "string" and robloxApi.callbackNames[key] then
+            local okC, cbCls = pcall(robloxApi.foreignGuardClass, proxy, formattedName, dumperState.registry[proxy] or formattedName)
+            local c, g = okC and cbCls or nil, 0
+            while typeFunction(c) == "string" and g < 64 do
+                local set = robloxApi.callbacks[c]
+                if set and set[key] then
+                    error(key .. " is a callback member of " .. cbCls .. "; you can only set the callback value, get is not available", 2)
+                end
+                c = robloxApi.psuper and robloxApi.psuper[c]
+                g = g + 1
+            end
         end
         -- [PATCH:NUMKEY] Instances have no array part: `inst[1]` raises like any unknown member
         if typeFunction(key) == "number" and rawget(proxy, "__created_instance") then
@@ -18470,6 +18768,22 @@ createProxyObject = function(objName, isGlobal, parentProxy)
             local _h, _m, _sx = val:match("^(%d+):(%d+):?(%d*)$")
             if _h then key = "ClockTime"; val = (tonumber(_h) % 24) + (tonumber(_m) or 0) / 60 + (tonumber(_sx) or 0) / 3600 end
         end
+        -- [v1.7] nil is not a value of a bool / number / enum / datatype property (only object
+        -- references and CustomPhysicalProperties-style optionals accept it)
+        if val == nil and typeFunction(key) == "string" and not key:find("^__", 1)
+            and rawget(proxy, "__created_instance") and not rawget(proxy, "__fabricated") then
+            local _nps = dumperState.property_store[proxy]
+            local _ncn = _nps and typeFunction(_nps.ClassName) == "string" and _nps.ClassName or nil
+            if _ncn then
+                local _nf, _nk = robloxApi.resolveMember(_ncn, key)
+                if _nf and typeFunction(_nk) == "string" then
+                    local _nw = (_nk == "b" and "boolean") or (_nk == "n" and "number")
+                        or (_nk:sub(1, 2) == "E:" and ("Enum." .. _nk:sub(3)))
+                        or (_nk:sub(1, 2) == "D:" and _nk:sub(3) ~= "PhysicalProperties" and _nk:sub(3) ~= "SecurityCapabilities" and _nk:sub(3)) or nil
+                    if _nw then error("Unable to assign property " .. key .. ". " .. _nw .. " expected, got nil", 2) end
+                end
+            end
+        end
         -- [PATCH:SET-TYPECHECK] Property assignments are type-checked against the API dump:
         -- `part.Size = 1`, `part.Anchored = "x"`, `part.Transparency = true` raise
         -- "Unable to assign property X. <type> expected, got <type>" on a real client.
@@ -18529,6 +18843,22 @@ createProxyObject = function(objName, isGlobal, parentProxy)
                             error("Unable to assign property " .. key .. ". " .. _wn .. " expected, got " .. _gn, 2)
                         end
                         if _want == "string" and _got == "number" then val = tostring(val) end
+                        -- [v1.7] an enum property accepts an EnumItem, an item name or an item value
+                        if _want == "EnumItem" and _wenum and (_got == "string" or _got == "number") then
+                            local _okE, _item = pcallFunction(function()
+                                local E = _G.Enum[_wenum]
+                                if _got == "string" then return E:FromName(val) end
+                                return E:FromValue(val)
+                            end)
+                            if not (_okE and _item ~= nil) then
+                                error("Unable to assign property " .. key .. ". Invalid value " .. (_got == "string" and ('"' .. val .. '"') or toStringFunction(val)) .. " for enum " .. _wenum, 2)
+                            end
+                            val = _item
+                        end
+                        -- [v1.7] nil is only valid for object references (and optional datatypes)
+                        if val == nil and _want ~= "Instance" and _want ~= "PhysicalProperties" and _want ~= "string" then
+                            error("Unable to assign property " .. key .. ". " .. (_want == "EnumItem" and _wenum and ("Enum." .. _wenum) or _want) .. " expected, got nil", 2)
+                        end
                     end
                 end
             end
@@ -18829,6 +19159,7 @@ createProxyObject = function(objName, isGlobal, parentProxy)
                 _fcn = _okc and _cc or nil
             end
             if typeFunction(_fcn) == "string" and robloxApi.isF32(_fcn, key) then _stv = robloxApi.f32round(val) end
+            if _fcn == "Path2D" and key == "Thickness" then _stv = math.clamp(_stv, 0, 100) end -- [v1.7] documented clamp
         end
         dumperState.property_store[proxy][key] = _stv
 
@@ -19146,6 +19477,7 @@ local _datatypeMembers = {
     RotationCurveKey = {Time=1,Value=1,Interpolation=1,LeftTangent=1,RightTangent=1},
     ValueCurveKey = {Time=1,Value=1,Interpolation=1,Envelope=1},
 }
+_datatypeMembers.Path2DControlPoint = {Position = 1, LeftTangent = 1, RightTangent = 1} -- [v1.7]
 -- Expose to the instance proxy __index (defined earlier in the file) so proxies
 -- tagged as datatypes -- e.g. NumberRange, built via createProxyObject -- get the
 -- same foreign-member rejection.
@@ -19935,6 +20267,9 @@ local function createTypeDa(typeName, methods)
         return s and res
     end
     dd.__index = function(_, key)
+        if typeName == "Color3" and key == "toHSV" then -- [v1.7] Color3.toHSV(color) == color:ToHSV()
+            return function(c) return c:ToHSV() end
+        end
         -- [PATCH:DT-STATIC] legacy lowercase CFrame.angles == CFrame.Angles
         if typeName == "CFrame" and key == "angles" then key = "Angles" end
         if typeName == "Vector3" then
@@ -20133,6 +20468,9 @@ local function createTypeDa(typeName, methods)
                         if _argc == 2 then _need(1, "Vector2"); _need(2, "Vector2")
                         elseif _argc == 4 then for _i = 1, 4 do _need(_i, "number") end
                         else error("invalid argument #" .. (_argc < 2 and 2 or _argc < 4 and 4 or 5) .. " to 'new' (number expected, got no value)", 2) end
+                    elseif typeName == "Path2DControlPoint" and key == "new" then
+                        -- [v1.7] Path2DControlPoint.new([Position [, LeftTangent, RightTangent]]): UDim2 only
+                        for _i = 1, 3 do if args[_i] ~= nil then _need(_i, "UDim2") end end
                     elseif typeName == "Region3" and key == "new" then
                         -- [PATCH:DT-ARGCHECK3] Region3.new(Vector3, Vector3)
                         _need(1, "Vector3"); _need(2, "Vector3")
@@ -20667,6 +21005,12 @@ local function createTypeDa(typeName, methods)
                         error(tostring(k) .. " is not a valid member of " .. typeName, 2)
                     end
 
+                    -- [v1.7] Path2DControlPoint: the three UDim2 constructor arguments (unset ones are {0,0},{0,0})
+                    if typeName == "Path2DControlPoint" then
+                        if k == "Position" then return args[1] or UDim2.new(0, 0, 0, 0) end
+                        if k == "LeftTangent" then return args[2] or UDim2.new(0, 0, 0, 0) end
+                        if k == "RightTangent" then return args[3] or UDim2.new(0, 0, 0, 0) end
+                    end
                     -- [PATCH:CFRAME-MATH] numeric CFrame methods (shared function objects,
                     -- so `a.Inverse == b.Inverse` holds like on a real client)
                     if typeName == "CFrame" then
@@ -20874,7 +21218,7 @@ local function createTypeDa(typeName, methods)
                         if typeName == "Vector3" then
                             local x, y, z = extractNum(args[1], 0), extractNum(args[2], 0), extractNum(args[3], 0)
                             local mag = math.sqrt(x*x + y*y + z*z)
-                            if mag == 0 then return dc.new(0, 0, 0) end
+                            if mag == 0 then return dc.new(0/0, 0/0, 0/0) end -- [v1.7] zero.Unit is NaN
                             return dc.new(x/mag, y/mag, z/mag)
                         end
                         if typeName == "Vector2" then
@@ -22241,7 +22585,7 @@ local function createTypeDa(typeName, methods)
                         rawset(t, "__catalog_props", ps)
                         return
                     end
-                    error(typeName .. " components are read-only", 2)
+                    error(tostring(k) .. " member of " .. typeName .. " is read-only and cannot be assigned to", 2) -- [v1.7]
                 end
 
                 local function opMeta(symbol)
@@ -22459,7 +22803,7 @@ local function createTypeDa(typeName, methods)
                                     if typeName == "Vector3" then
                                         local z = calc("Z")
                                         local mag = math.sqrt(x*x + y*y + z*z)
-                                        if mag == 0 then return dc.new(0, 0, 0) end
+                                        if mag == 0 then return dc.new(0/0, 0/0, 0/0) end -- [v1.7] zero.Unit is NaN
                                         return dc.new(x/mag, y/mag, z/mag)
                                     end
                                     local mag = math.sqrt(x*x + y*y)
@@ -23021,7 +23365,13 @@ Random = {new = function(seed)
             return Vector3.new(v[1], v[2], v[3])
         end
         function obj:Shuffle(tab) return tab end
-        function obj:Clone() return Random.new(_seedInt) end
+        function obj:Clone() -- [v1.7] the clone continues from the same state
+            local c = Random.new(_seedInt)
+            local adopt = rawget(c, "__adopt_history")
+            if adopt then adopt(_hist) end
+            return c
+        end
+        rawset(obj, "__adopt_history", function(h) for i = 1, #h do _hist[i] = h[i] end end)
         function obj:NextGaussian(mean, sd)
             mean, sd = mean or 0, sd or 1
             return exec(function()
@@ -24210,6 +24560,7 @@ local function setupEnumMeta(e)
                     if propKey == "EnumType" then return _catProxy end
                     error(tostring(propKey) .. " is not a valid member of EnumItem", 2)
                 end
+                itemMeta.__newindex = function(_, k) error(tostring(k) .. " cannot be assigned to", 2) end -- [v1.7]
             end
             return itemProxy
         end
@@ -24363,7 +24714,7 @@ Instance = {new = function(className, parent)
         if name == "HumanoidDescription" then
             local ps = dumperState.property_store[proxy]
             ps.HeadScale = 1; ps.HeightScale = 1; ps.WidthScale = 1
-            ps.BodyTypeScale = 0; ps.ProportionsScale = 0; ps.DepthScale = 1
+            ps.BodyTypeScale = 0.30000001192092896; ps.DepthScale = 1 -- [v1.7] API-dump defaults (float32)
             ps.HatAccessory = ""; ps.HairAccessory = ""; ps.FaceAccessory = ""
             ps.NeckAccessory = ""; ps.ShouldersAccessory = ""; ps.FrontAccessory = ""
             ps.BackAccessory = ""; ps.WaistAccessory = ""
@@ -24746,7 +25097,10 @@ task = {
         emitOutput("task.cancel(thread)")
     end,
     synchronize = function() emitOutput("task.synchronize()") end,
-    desynchronize = function() emitOutput("task.desynchronize()") end
+    desynchronize = function() -- [v1.7] the script is not running under an Actor
+        emitOutput("task.desynchronize()")
+        error("Cannot desynchronize a thread that is not running under an Actor", 2)
+    end
 }
 wait = function(sec)
     if sec ~= nil and sec ~= false then sec = robloxApi.taskNumArg("wait", 1, 1, sec, true) end
@@ -24761,6 +25115,10 @@ wait = function(sec)
         if robloxApi.frameWork() then
             robloxApi.runFrames(math.min(300, math.max(1, math.floor(t * 60 + 0.5))), 1 / 60) -- [PATCH:RENDERSTEP]
         end
+    do -- [v1.7] resume spawn()/delay() threads that are now due
+        local tasks = robloxApi.takeDue(virtual_time_offset)
+        for _, tFunc in ipairs(tasks) do pcall(tFunc) end
+    end
     return t + _wJit, get_virtual_clock()
 end
 delay = function(sec, func)
@@ -27658,8 +28016,7 @@ exploitFuncs = {
         emitOutput(string.format("collectgarbage(%s)", serializeValue(opt)))
         -- [PATCH:GC-REAL] report the real heap (it grows when the script allocates and shrinks after
         -- a collect) instead of a random number; unknown options raise Luau's own error.
-        if opt == "stop" or opt == "restart" then return 0 end
-        if opt == nil or opt == "collect" then pcall(robloxApi.nativeCG, "collect"); return 0 end
+        -- [v1.7] Luau accepts only "count"; every other option (and no option) raises
         return robloxApi.cleanCall(robloxApi.nativeCG, 2, opt, arg)
     end,
     firetouchtransmitter = function(p1, p2, toggle) return exploitFuncs.firetouchinterest(p1, p2, toggle) end,
@@ -27799,6 +28156,16 @@ do
         local proxy = createProxyObject("Content", false)
         dumperState.registry[proxy] = reg
         dumperState.property_store[proxy] = props
+        -- [v1.7] Uri / Object / SourceType are plain fields: an unset one reads nil
+        local _meta = getMetatableFunction(proxy)
+        if typeFunction(_meta) == "table" then
+            local _base = _meta.__index
+            _meta.__index = function(t, k)
+                if k == "Uri" or k == "Object" or k == "SourceType" then return props[k] end
+                if typeFunction(_base) == "function" then return _base(t, k) end
+                if typeFunction(_base) == "table" then return _base[k] end
+            end
+        end
         return proxy
     end
     local function src(kind) return robloxApi.enumByPath("Enum.ContentSourceType." .. kind) end
@@ -27832,6 +28199,273 @@ do
             return v
         end
     end})
+end
+-- [v1.7] executor (UNC) functions with real behaviour instead of placeholders
+do
+    local E = exploitFuncs
+    local function sigKeyOf(signal)
+        if typeFunction(signal) ~= "table" then return nil end
+        return rawget(signal, "__sig_key") or dumperState.registry[signal]
+    end
+    local function classOf(obj)
+        local ps = dumperState.property_store[obj]
+        if ps and typeFunction(ps.ClassName) == "string" then return ps.ClassName end
+        local ok, c = pcallFunction(robloxApi.foreignGuardClass, obj, nil, dumperState.registry[obj])
+        return ok and c or nil
+    end
+    local function isHiddenProp(cls, prop)
+        if typeFunction(prop) ~= "string" then return false end
+        if prop:find("_xml$") then return true end
+        local c, g = cls, 0
+        while typeFunction(c) == "string" and g < 64 do
+            local set = robloxApi.notscript and robloxApi.notscript[c]
+            if set and set[prop] then return true end
+            c = robloxApi.psuper and robloxApi.psuper[c]
+            g = g + 1
+        end
+        return false
+    end
+    local function realMt(obj)
+        local ref = dumperState.metatable_ref and dumperState.metatable_ref[obj]
+        if typeFunction(ref) == "table" then return ref end
+        local ok, mt = pcallFunction(getMetatableFunction, obj)
+        if ok and typeFunction(mt) == "table" then return mt end
+        return nil
+    end
+
+    -- crypt: real digests (Lune serde), base64 keys/bytes, an IV-dependent reversible cipher
+    E.crypt = E.crypt or {}
+    local hashNames = {md5 = "md5", sha1 = "sha1", sha224 = "sha224", sha256 = "sha256", sha384 = "sha384", sha512 = "sha512",
+        ["sha3-224"] = "sha3-224", ["sha3-256"] = "sha3-256", ["sha3-384"] = "sha3-384", ["sha3-512"] = "sha3-512"}
+    E.crypt.hash = function(data, algorithm)
+        emitOutput(string.format("crypt.hash(%s, %s)", serializeValue(data), serializeValue(algorithm)))
+        if typeFunction(data) ~= "string" then error("invalid argument #1 to 'hash' (string expected, got " .. robloxApi.argTn(data) .. ")", 2) end
+        local algo = hashNames[string.lower(toStringFunction(algorithm or "sha384"))]
+        if not algo then error("invalid argument #2 to 'hash' (unsupported hash algorithm)", 2) end
+        if not (hasSerde and serde and serde.hash) then error("crypt.hash is unavailable", 2) end
+        return string.lower(serde.hash(algo, data))
+    end
+    E.crypt.generatebytes = function(len)
+        len = math.floor(tonumber(len) or 16)
+        local t = {}
+        for i = 1, len do t[i] = string.char(math.random(0, 255)) end
+        return E.crypt.base64encode(table.concat(t))
+    end
+    local function keystream(key, iv, n)
+        local out, block = {}, 0
+        while #out < n do
+            local h = serde.hash("sha256", toStringFunction(key) .. "|" .. toStringFunction(iv) .. "|" .. block)
+            for i = 1, #h, 2 do out[#out + 1] = tonumber(h:sub(i, i + 1), 16) end
+            block = block + 1
+        end
+        return out
+    end
+    local function xorWith(data, ks)
+        local t = {}
+        for i = 1, #data do t[i] = string.char(bit32.bxor(data:byte(i), ks[i])) end
+        return table.concat(t)
+    end
+    E.crypt.encrypt = function(data, key, iv, mode)
+        emitOutput(string.format("crypt.encrypt(%s, %s)", serializeValue(data), serializeValue(key)))
+        iv = iv or E.crypt.generatebytes(16)
+        local enc = xorWith(toStringFunction(data), keystream(key, iv, #toStringFunction(data)))
+        return E.crypt.base64encode(enc), iv
+    end
+    E.crypt.decrypt = function(data, key, iv, mode)
+        emitOutput(string.format("crypt.decrypt(%s, %s)", serializeValue(data), serializeValue(key)))
+        local raw = E.crypt.base64decode(toStringFunction(data))
+        return xorWith(raw, keystream(key, iv, #raw))
+    end
+
+    -- filesystem: paths relative to the workspace, direct children only; loadfile / dofile
+    E.listfiles = function(folder)
+        local raw = (typeFunction(folder) == "table" and rawget(folder, "__value")) or folder
+        if typeFunction(raw) ~= "string" then error("invalid argument #1 to 'listfiles' (string expected, got " .. robloxApi.argTn(raw) .. ")", 2) end
+        local rel = toStringFunction(raw):gsub("%.%.", ""):gsub("\\", "/"):gsub("^/+", ""):gsub("/+", "/"):gsub("/+$", "")
+        local root = rel == "" and "scripts" or ("scripts/" .. rel)
+        emitOutput(string.format("listfiles(%s)", serializeValue(raw)))
+        local out, seen = {}, {}
+        local function consider(k)
+            if typeFunction(k) ~= "string" or k:sub(1, #root + 1) ~= root .. "/" then return end
+            local child = k:sub(#root + 2)
+            if child ~= "" and not child:find("/", 1, true) and not seen[k] then
+                seen[k] = true
+                out[#out + 1] = k:sub(#"scripts/" + 1)
+            end
+        end
+        for k in pairsFunction(dumperState.virtual_fs or {}) do consider(k) end
+        for k in pairsFunction(dumperState.virtual_fs_folders or {}) do consider(k) end
+        table.sort(out)
+        return out
+    end
+    E.loadfile = function(path, chunkname)
+        local ok, src = pcallFunction(E.readfile, path)
+        if not ok then return nil, toStringFunction(src) end
+        local ls = E.loadstring or loadstring
+        return ls(src, chunkname or ("=" .. toStringFunction(path)))
+    end
+    E.dofile = function(path)
+        local f, err = E.loadfile(path)
+        if not f then error(err, 2) end
+        return f()
+    end
+    E.messagebox = function(text, caption, flags)
+        emitOutput(string.format("messagebox(%s, %s, %s)", serializeValue(text), serializeValue(caption), serializeValue(flags)))
+        return 1
+    end
+
+    -- signals / connections
+    E.getconnections = function(signal)
+        emitOutput(string.format("getconnections(%s)", serializeValue(signal)))
+        local key = sigKeyOf(signal)
+        local list = key and dumperState.event_callbacks and dumperState.event_callbacks[key]
+        local out = {}
+        if typeFunction(list) ~= "table" then return out end
+        for _, cb in ipairsFunction(list) do
+            local c = {Enabled = true, ForeignState = false, LuaConnection = true, Function = cb, Thread = coroutine.create(function() end)}
+            local function detach()
+                for i = #list, 1, -1 do if list[i] == cb then table.remove(list, i) end end
+            end
+            c.Fire = function(_, ...) return cb(...) end
+            c.Defer = function(_, ...) local a = table.pack(...); task.defer(function() cb(table.unpack(a, 1, a.n)) end) end
+            c.Disconnect = function() detach(); c.Enabled = false end
+            c.Disable = function() if c.Enabled then detach(); c.Enabled = false end end
+            c.Enable = function() if not c.Enabled then table.insert(list, cb); c.Enabled = true end end
+            out[#out + 1] = c
+        end
+        return out
+    end
+    E.firesignal = function(signal, ...)
+        emitOutput(string.format("firesignal(%s, ...)", serializeValue(signal)))
+        local key = sigKeyOf(signal)
+        if key then robloxApi.fireKey(key, ...) end
+    end
+    E.getcallbackvalue = function(obj, prop)
+        emitOutput(string.format("getcallbackvalue(%s, %s)", serializeValue(obj), serializeValue(prop)))
+        local ps = dumperState.property_store[obj]
+        return ps and rawget(ps, prop) or nil
+    end
+
+    -- hidden / scriptable properties
+    E.isscriptable = function(obj, prop)
+        emitOutput(string.format("isscriptable(%s, %s)", serializeValue(obj), serializeValue(prop)))
+        local o = dumperState.scriptable_props and dumperState.scriptable_props[obj]
+        if o and o[prop] ~= nil then return o[prop] and true or false end
+        local cls = classOf(obj)
+        if not cls then return false end
+        if isHiddenProp(cls, prop) then return false end
+        local okM, set = pcallFunction(robloxApi.memberSetFor, cls)
+        return okM and typeFunction(set) == "table" and set[prop] ~= nil or false
+    end
+    E.gethiddenproperty = function(obj, prop)
+        if not isProxy(obj) then error("invalid argument #1 to 'gethiddenproperty' (Instance expected)", 2) end
+        emitOutput(string.format("gethiddenproperty(%s, %s)", serializeValue(obj), serializeValue(prop)))
+        local cls = classOf(obj)
+        local hidden = isHiddenProp(cls, prop)
+        local hs = dumperState.hidden_props and dumperState.hidden_props[obj]
+        if hs and hs[prop] ~= nil then return hs[prop], hidden end
+        if hidden then
+            local v = cls and robloxApi.dumpDefault(cls, prop)
+            if v ~= nil then return v, true end
+            local canon = prop:gsub("_xml$", "")
+            canon = canon:sub(1, 1):upper() .. canon:sub(2)
+            local okC, cv = pcallFunction(function() return obj[canon] end)
+            return okC and cv or nil, true
+        end
+        local ok, val = pcallFunction(function() return obj[prop] end)
+        if ok then return val, false end
+        return nil, false
+    end
+    E.sethiddenproperty = function(obj, prop, value)
+        if not isProxy(obj) then error("invalid argument #1 to 'sethiddenproperty' (Instance expected)", 2) end
+        emitOutput(string.format("sethiddenproperty(%s, %s, %s)", serializeValue(obj), serializeValue(prop), serializeValue(value)))
+        local hidden = isHiddenProp(classOf(obj), prop)
+        if not hidden then pcallFunction(function() obj[prop] = value end) end
+        dumperState.hidden_props = dumperState.hidden_props or setmetatable({}, {__mode = "k"})
+        dumperState.hidden_props[obj] = dumperState.hidden_props[obj] or {}
+        dumperState.hidden_props[obj][prop] = value
+        return hidden
+    end
+
+    -- nil-parented instances the script created
+    E.getnilinstances = function()
+        emitOutput("getnilinstances()")
+        local out = {}
+        for inst, ps in pairsFunction(dumperState.property_store) do
+            if typeFunction(inst) == "table" and rawget(inst, "__created_instance") and typeFunction(ps) == "table"
+                and ps.Parent == nil and typeFunction(ps.ClassName) == "string"
+                and not (dumperState.parent_map and dumperState.parent_map[inst] ~= nil) then
+                local okP, par = pcallFunction(function() return inst.Parent end)
+                if okP and par == nil then out[#out + 1] = inst end
+            end
+        end
+        return out
+    end
+
+    -- metatables of the script's own tables (the live metatable even when __metatable locks it)
+    local _origGetRawMt = E.getrawmetatable
+    E.getrawmetatable = function(obj)
+        if typeFunction(obj) == "table" and not isProxy(obj) then
+            emitOutput(string.format("local rawmt = getrawmetatable(%s)", dumperState.registry[obj] or serializeValue(obj)))
+            return realMt(obj)
+        end
+        return _origGetRawMt(obj)
+    end
+    local _origHookMm = E.hookmetamethod
+    E.hookmetamethod = function(obj, method, new)
+        if typeFunction(obj) == "table" and not isProxy(obj) then
+            local mt = realMt(obj)
+            local name = toStringFunction(method)
+            if mt then
+                emitOutput(string.format("hookmetamethod(%s, %s, function(...) end)", dumperState.registry[obj] or "object", serializeValue(name)))
+                local original = rawget(mt, name)
+                rawset(mt, name, new)
+                return original
+            end
+        end
+        return _origHookMm(obj, method, new)
+    end
+
+    -- cache: invalidate hands out a fresh reference to the same instance on the next lookup
+    E.cache = E.cache or {}
+    E.cache.invalidate = function(obj)
+        emitOutput(string.format("cache.invalidate(%s)", serializeValue(obj)))
+        if not isProxy(obj) then return end
+        dumperState.cache_invalidated = dumperState.cache_invalidated or setmetatable({}, {__mode = "k"})
+        dumperState.cache_invalidated[obj] = true
+        local parent = dumperState.parent_map and dumperState.parent_map[obj]
+        if parent ~= nil and typeFunction(E.cloneref) == "function" then
+            local okR, fresh = pcallFunction(E.cloneref, obj)
+            if okR and fresh ~= nil and fresh ~= obj then
+                dumperState.parent_map[fresh] = parent
+                dumperState.parent_map[obj] = nil
+            end
+        end
+    end
+    E.cache.iscached = function(obj)
+        emitOutput(string.format("cache.iscached(%s)", serializeValue(obj)))
+        return not (dumperState.cache_invalidated and dumperState.cache_invalidated[obj]) and isProxy(obj) or false
+    end
+    E.cache.replace = function(obj, new)
+        emitOutput(string.format("cache.replace(%s, %s)", serializeValue(obj), serializeValue(new)))
+        local parent = dumperState.parent_map and dumperState.parent_map[obj]
+        if parent ~= nil and isProxy(new) then
+            dumperState.parent_map[new] = parent
+            dumperState.parent_map[obj] = nil
+        end
+    end
+
+    -- Drawing: documented object kinds only; every object has a ZIndex
+    if typeFunction(E.Drawing) == "table" and typeFunction(E.Drawing.new) == "function" then
+        local _origNew = E.Drawing.new
+        local kinds = {Line = true, Text = true, Image = true, Circle = true, Square = true, Quad = true, Triangle = true}
+        E.Drawing.new = function(kind)
+            if not kinds[kind] then error("invalid argument #1 to 'new' (invalid drawing type " .. toStringFunction(kind) .. ")", 2) end
+            local d = _origNew(kind)
+            if typeFunction(d) == "table" and rawget(d, "ZIndex") == nil then rawset(d, "ZIndex", 1) end
+            return d
+        end
+    end
 end
 -- INLINER support for debug.getinfo (and getinfo) results.
 -- The dumper unrolls `for k,v in t do ... end` by executing the body per
@@ -28639,6 +29273,7 @@ _G.printidentity = function()
         print("Current identity is " .. tostring(id))
     end
 end
+_G.stats = function() return _G.game:GetService("Stats") end -- [v1.7] stats() == game:GetService("Stats")
 local missingRobloxGlobals = {
     "settings", "stats", "UserSettings", "PluginManager",
     "Version", "DebuggerManager", "delay", "spawn", "Wait", "require"
@@ -28983,7 +29618,9 @@ end
 robloxApi.traceback = function(a, b, c)
     local th, msg, lvl
     if typeFunction(a) == "thread" then th, msg, lvl = a, b, c else msg, lvl = a, b end
-    if msg ~= nil and typeFunction(msg) ~= "string" and typeFunction(msg) ~= "number" then return msg end
+    if msg ~= nil and typeFunction(msg) ~= "string" and typeFunction(msg) ~= "number" then
+        error("invalid argument #" .. (th and 2 or 1) .. " to 'traceback' (string expected, got " .. robloxApi.argTn(msg) .. ")", 2) -- [v1.7]
+    end
     if lvl ~= nil and typeFunction(lvl) ~= "number" then
         error("invalid argument #" .. (th and 3 or 2) .. " to 'traceback' (number expected, got " .. typeFunction(lvl) .. ")", 2)
     end
@@ -29395,7 +30032,7 @@ typeof = function(...)
         return "Instance"
     end
     -- [PATCH:TYPEOF-META] typeof honours a string __type in the metatable (tables and newproxy userdata)
-    if typeFunction(x) == "table" or typeFunction(x) == "userdata" then
+    if typeFunction(x) == "userdata" then -- [v1.7] Luau ignores __type on tables
         local _okm, _mt = pcall(getMetatableFunction, x)
         if _okm and typeFunction(_mt) == "table" then
             local _ty = rawget(_mt, "__type")
@@ -29444,10 +30081,11 @@ tostring = function(...)
             return _r
         end
     end
-    -- [MANUAL] Roblox renders numbers with the %.14g format (e.g. 1e+20, not
-    -- 100000000000000000000; 3.1415926535898, not 3.141592653589793) -- dtc53..55.
+    -- [v1.7] numbers print like the Luau VM: the shortest string that round-trips
+    -- (0.1 + 0.2 -> 0.30000000000000004, math.pi -> 3.141592653589793, 1e20 -> 100000000000000000000).
+    -- The old %.14g rendering was Lua 5.1 behaviour and a detectable difference.
     if typeFunction(x) == "number" then
-        return string.format("%.14g", x)
+        return toStringFunction(x)
     end
     if isProxy(x) then
         -- Instance-method proxies present as C functions: tostring must yield
@@ -29468,7 +30106,9 @@ tostring = function(...)
         end
         -- [PATCH:BRICKCOLOR] BrickColor renders as its palette name
         do local _bn = rawget(x, "__bc_name"); if _bn then return _bn end end
+        if rawget(x, "__is_connection") then return "Connection" end -- [v1.7]
         local regName = dumperState.registry[x]
+        if regName == "Enum" then return "Enums" end -- [v1.7]
         if regName == "game" then return "Ugc" end
         if regName == "workspace" then return "Workspace" end
         if type(regName) == "string" and rawget(x, "__roblox_type") == nil then
@@ -29836,6 +30476,12 @@ require = function(module)
 
     if typeFunction(module) == "string" and (module == "lfs" or module == "ffi") then
         error("module '" .. module .. "' not found", 2)
+    end
+    -- [v1.7] a string, or an Instance that is not a ModuleScript, is not requirable
+    if typeFunction(module) == "string" then error("Attempted to call require with invalid argument(s).", 2) end
+    if isProxy(module) and rawget(module, "__created_instance") then
+        local _mps = dumperState.property_store[module]
+        if _mps and _mps.ClassName ~= "ModuleScript" then error("Attempted to call require with invalid argument(s).", 2) end
     end
 
     local modName = dumperState.registry[module] or serializeValue(module)
@@ -30438,6 +31084,7 @@ function proxyTable.reset()
             dumperState.registry[itemProxy] = itemPath
             dumperState.enum_cache[itemPath] = itemProxy
             local itemMeta = getMetatableFunction(itemProxy)
+            itemMeta.__newindex = function(_, k) error(tostring(k) .. " cannot be assigned to", 2) end -- [v1.7]
             itemMeta.__index = function(_, propKey)
                 if propKey == proxyList or propKey == "__proxy_id" then return rawget(_, propKey) end
                 if propKey == "Name" then return itemName end
@@ -30809,7 +31456,8 @@ end
     real_env.error = errorFunction
     real_env.load = nil
     real_env.Logger = nil
-    real_env.dofile = nil; real_env.loadfile = nil; real_env.originalError = nil -- [PATCH:LUAU-LIBS]
+    -- [v1.7] executors expose loadfile/dofile over their workspace folder (UNC); Luau's own are absent
+    real_env.dofile = exploitFuncs.dofile; real_env.loadfile = exploitFuncs.loadfile; real_env.originalError = nil -- [PATCH:LUAU-LIBS]
     pcall(table.freeze, exploitFuncs.debug); pcall(table.freeze, real_env.buffer or _G.buffer)
     do
         local _origRawget, _origRawset, _origRawlen, _origNext = rawget, rawset, rawlen, next
@@ -31243,7 +31891,7 @@ function proxyTable.dump_string(code, outputPath)
     senv.load = nil
     senv.Logger = nil
     -- [PATCH:LUAU-LIBS] dofile/loadfile do not exist in Roblox's Luau
-    senv.dofile = nil; senv.loadfile = nil
+    senv.dofile = exploitFuncs.dofile; senv.loadfile = exploitFuncs.loadfile -- [v1.7] executor workspace functions
     senv.originalError = nil -- [v1.6] logger-internal alias of error, not a Roblox global
     -- Roblox's library tables are all read-only (luaL_sandbox)
     pcall(table.freeze, exploitFuncs.debug); pcall(table.freeze, senv.buffer or _G.buffer)

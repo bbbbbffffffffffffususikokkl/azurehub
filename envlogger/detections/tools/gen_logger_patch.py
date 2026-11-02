@@ -75,9 +75,9 @@ def spec_for(exp):
         return "@CS:" + ",".join(num(c) for kp in p for c in kp)
     if kind == "font":
         fam, weight, style = p
-        if ";" in fam or "|" in fam:
+        if ";" in fam or "|" in fam or "~" in fam:
             return None
-        return "@FN:%s;%s;%s" % (fam, weight, style)
+        return "@FN:%s~%s~%s" % (fam, weight, style)
     if kind == "faces":
         return "@FA:%d" % p
     if kind == "axes":
@@ -144,6 +144,7 @@ def gen_defaults(api, src):
             for c, s in specs.items():
                 if s != majority or (c, pn) in existing:
                     rows[(c, pn)] = s
+    rows[("Instance", "Capabilities")] = "@SC:"  # an empty SecurityCapabilities on every instance
     return rows
 
 
