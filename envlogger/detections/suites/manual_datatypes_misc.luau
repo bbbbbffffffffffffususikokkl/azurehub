@@ -1,0 +1,457 @@
+-- envlogger detection harness (prepended to every suite by tools/build_suites.py)
+-- Every check is isolated in pcall: a check passes only when its function returns exactly `true`.
+-- Result protocol (one print per line, parsed by tools/run_detections.py):
+--   @@B|<suite>                         suite started
+--   @@F|<check id>|<detail>             a failed check
+--   @@E|<suite>|<total>|<pass>|<fail>   suite finished
+-- The suites are plain Luau, so they can also be pasted into a real executor to confirm the
+-- expectations against a live Roblox client.
+local __suite = "manual_datatypes_misc"
+local __total, __pass, __fail = 0, 0, 0
+local __pcall, __tostring, __typeof, __print, __type = pcall, tostring, typeof, print, type
+local __find, __abs, __max = string.find, math.abs, math.max
+local function S(v)
+    local okT, t = __pcall(__typeof, v)
+    local okS, s = __pcall(__tostring, v)
+    return (okT and t or "?") .. ":" .. (okS and s or "<tostring error>")
+end
+local function T(id, f)
+    __total = __total + 1
+    local ok, r, why = __pcall(f)
+    if ok and r == true then
+        __pass = __pass + 1
+        return
+    end
+    __fail = __fail + 1
+    local detail
+    if not ok then
+        detail = "error: " .. __tostring(r)
+    elseif why ~= nil then
+        detail = __tostring(why)
+    else
+        detail = "returned " .. S(r)
+    end
+    __print("@@F|" .. id .. "|" .. detail)
+end
+-- exact equality
+local function EQ(a, b)
+    if a == b then return true end
+    return false, "expected " .. S(b) .. " got " .. S(a)
+end
+-- numeric equality within a relative tolerance (default 1e-6)
+local function NEAR(a, b, eps)
+    if a == b then return true end
+    if __type(a) == "number" and __type(b) == "number" and __abs(a - b) <= (eps or 1e-6) * __max(1, __abs(b)) then
+        return true
+    end
+    return false, "expected ~" .. S(b) .. " got " .. S(a)
+end
+-- component-wise tolerance for a list of numbers
+local function NEARV(got, exp, eps)
+    for i = 1, #exp do
+        local g, e = got[i], exp[i]
+        if not (g == e or (__type(g) == "number" and __abs(g - e) <= (eps or 1e-6) * __max(1, __abs(e)))) then
+            return false, "component " .. i .. " expected ~" .. __tostring(e) .. " got " .. __tostring(g)
+        end
+    end
+    return true
+end
+local function TY(v, t)
+    local got = __typeof(v)
+    if got == t then return true end
+    return false, "expected typeof " .. t .. " got " .. got .. " (" .. S(v) .. ")"
+end
+-- the call must raise; when `needle` is given the message must contain it (plain find)
+local function ERR(f, needle)
+    local ok, e = __pcall(f)
+    if ok then return false, "expected an error, call succeeded" end
+    if needle ~= nil and not __find(__tostring(e), needle, 1, true) then
+        return false, "error message mismatch: " .. __tostring(e)
+    end
+    return true
+end
+-- the call must not raise
+local function OK(f)
+    local ok, e = __pcall(f)
+    if ok then return true end
+    return false, "unexpected error: " .. __tostring(e)
+end
+-- assert one sub-check inside a multi-step check: A(EQ(x, 1)); A(TY(y, "Vector3")); return true
+local function A(r, why)
+    if r ~= true then error(why or "sub-check failed", 0) end
+end
+__print("@@B|" .. __suite)
+
+-- Remaining Roblox datatypes: constructors, fields, maths, conversions, errors.
+local function V3(...) return Vector3.new(...) end
+local function V2(...) return Vector2.new(...) end
+local function C3EQ(c, r, g, b, eps)
+    if typeof(c) ~= "Color3" then return false, "expected Color3 got " .. typeof(c) end
+    return NEARV({c.R, c.G, c.B}, {r, g, b}, eps or 1e-5)
+end
+
+-- Color3
+T("c3.typeof", function() return TY(Color3.new(), "Color3") end)
+T("c3.type_userdata", function() return EQ(type(Color3.new()), "userdata") end)
+T("c3.new_empty", function() return C3EQ(Color3.new(), 0, 0, 0) end)
+T("c3.new", function() return C3EQ(Color3.new(1, 0.5, 0.25), 1, 0.5, 0.25) end)
+T("c3.unclamped", function() return C3EQ(Color3.new(2, -1, 0.5), 2, -1, 0.5) end)
+T("c3.f32", function() return EQ(Color3.new(0.1, 0, 0).R, 0.10000000149011612) end)
+T("c3.fromRGB_red", function() return EQ(Color3.fromRGB(255, 0, 0), Color3.new(1, 0, 0)) end)
+T("c3.fromRGB_white", function() return C3EQ(Color3.fromRGB(255, 255, 255), 1, 1, 1) end)
+T("c3.fromRGB_mid", function() return C3EQ(Color3.fromRGB(128, 64, 32), 128 / 255, 64 / 255, 32 / 255) end)
+T("c3.fromHSV_red", function() return C3EQ(Color3.fromHSV(0, 1, 1), 1, 0, 0) end)
+T("c3.fromHSV_green", function() return C3EQ(Color3.fromHSV(1 / 3, 1, 1), 0, 1, 0) end)
+T("c3.fromHSV_blue", function() return C3EQ(Color3.fromHSV(2 / 3, 1, 1), 0, 0, 1) end)
+T("c3.fromHSV_gray", function() return C3EQ(Color3.fromHSV(0.5, 0, 0.5), 0.5, 0.5, 0.5) end)
+T("c3.ToHSV_red", function() local h, s, v = Color3.new(1, 0, 0):ToHSV(); return NEARV({h, s, v}, {0, 1, 1}) end)
+T("c3.ToHSV_cyan", function() local h, s, v = Color3.new(0, 1, 1):ToHSV(); return NEARV({h, s, v}, {0.5, 1, 1}) end)
+T("c3.ToHSV_static", function() local h, s, v = Color3.toHSV(Color3.new(0, 0, 1)); return NEARV({h, s, v}, {2 / 3, 1, 1}) end)
+T("c3.fromHex6", function() return C3EQ(Color3.fromHex("FF8000"), 1, 128 / 255, 0) end)
+T("c3.fromHex_hash", function() return C3EQ(Color3.fromHex("#00ff00"), 0, 1, 0) end)
+T("c3.fromHex3", function() return C3EQ(Color3.fromHex("#f00"), 1, 0, 0) end)
+T("c3.fromHex_bad", function() return ERR(function() return Color3.fromHex("zzzzzz") end) end)
+T("c3.ToHex", function() return EQ(string.lower(Color3.fromRGB(255, 128, 0):ToHex()), "ff8000") end)
+T("c3.ToHex_len", function() return EQ(#Color3.new(0.2, 0.4, 0.6):ToHex(), 6) end)
+T("c3.Lerp", function() return C3EQ(Color3.new(0, 0, 0):Lerp(Color3.new(1, 1, 1), 0.25), 0.25, 0.25, 0.25) end)
+T("c3.tostring", function() return EQ(tostring(Color3.new(1, 0, 0.5)), "1, 0, 0.5") end)
+T("c3.eq", function() return EQ(Color3.new(0.5, 0.5, 0.5) == Color3.new(0.5, 0.5, 0.5), true) end)
+T("c3.immutable", function() return ERR(function() local c = Color3.new(); c.R = 1 end) end)
+T("c3.no_arith", function() return ERR(function() return Color3.new() + Color3.new() end) end)
+T("c3.invalid_member", function() return ERR(function() return Color3.new().A end) end)
+
+-- UDim / UDim2
+T("udim.typeof", function() return TY(UDim.new(), "UDim") end)
+T("udim.fields", function() local u = UDim.new(0.5, 10); A(EQ(u.Scale, 0.5)); return EQ(u.Offset, 10) end)
+T("udim.empty", function() local u = UDim.new(); A(EQ(u.Scale, 0)); return EQ(u.Offset, 0) end)
+T("udim.add", function() return EQ(UDim.new(0.5, 10) + UDim.new(0.25, 5), UDim.new(0.75, 15)) end)
+T("udim.sub", function() return EQ(UDim.new(0.5, 10) - UDim.new(0.25, 5), UDim.new(0.25, 5)) end)
+T("udim.tostring", function() return EQ(tostring(UDim.new(0.5, 10)), "0.5, 10") end)
+T("udim2.typeof", function() return TY(UDim2.new(), "UDim2") end)
+T("udim2.fields", function()
+    local u = UDim2.new(0.1, 2, 0.3, 4)
+    A(NEAR(u.X.Scale, 0.1)); A(EQ(u.X.Offset, 2)); A(NEAR(u.Y.Scale, 0.3)); return EQ(u.Y.Offset, 4)
+end)
+T("udim2.width_height", function() local u = UDim2.new(1, 2, 3, 4); A(EQ(u.Width, u.X)); return EQ(u.Height, u.Y) end)
+T("udim2.from_udims", function() return EQ(UDim2.new(UDim.new(1, 2), UDim.new(3, 4)), UDim2.new(1, 2, 3, 4)) end)
+T("udim2.fromScale", function() return EQ(UDim2.fromScale(0.5, 0.25), UDim2.new(0.5, 0, 0.25, 0)) end)
+T("udim2.fromOffset", function() return EQ(UDim2.fromOffset(10, 20), UDim2.new(0, 10, 0, 20)) end)
+T("udim2.add", function() return EQ(UDim2.new(0.5, 10, 0, 1) + UDim2.new(0.25, 5, 1, 1), UDim2.new(0.75, 15, 1, 2)) end)
+T("udim2.sub", function() return EQ(UDim2.new(0.5, 10, 0, 1) - UDim2.new(0.25, 5, 1, 1), UDim2.new(0.25, 5, -1, 0)) end)
+T("udim2.Lerp", function() return EQ(UDim2.new(0, 0, 0, 0):Lerp(UDim2.new(1, 100, 0.5, 50), 0.5), UDim2.new(0.5, 50, 0.25, 25)) end)
+T("udim2.tostring", function() return EQ(tostring(UDim2.new(0.5, 10, 1, -5)), "{0.5, 10}, {1, -5}") end)
+T("udim2.tostring_zero", function() return EQ(tostring(UDim2.new()), "{0, 0}, {0, 0}") end)
+T("udim2.immutable", function() return ERR(function() local u = UDim2.new(); u.X = UDim.new() end) end)
+T("udim2.eq", function() return EQ(UDim2.new(1, 2, 3, 4) == UDim2.new(1, 2, 3, 4), true) end)
+T("udim2.ne", function() return EQ(UDim2.new(1, 2, 3, 4) == UDim2.new(1, 2, 3, 5), false) end)
+
+-- Rect
+T("rect.typeof", function() return TY(Rect.new(), "Rect") end)
+T("rect.numbers", function()
+    local r = Rect.new(1, 2, 5, 8)
+    A(EQ(r.Min, V2(1, 2))); A(EQ(r.Max, V2(5, 8))); A(EQ(r.Width, 4)); return EQ(r.Height, 6)
+end)
+T("rect.vectors", function() local r = Rect.new(V2(1, 2), V2(3, 4)); A(EQ(r.Min, V2(1, 2))); return EQ(r.Max, V2(3, 4)) end)
+T("rect.empty", function() local r = Rect.new(); A(EQ(r.Width, 0)); return EQ(r.Min, V2(0, 0)) end)
+T("rect.tostring", function() return EQ(tostring(Rect.new(1, 2, 3, 4)), "1, 2, 3, 4") end)
+T("rect.eq", function() return EQ(Rect.new(1, 2, 3, 4) == Rect.new(1, 2, 3, 4), true) end)
+
+-- NumberRange / sequences
+T("nrange.typeof", function() return TY(NumberRange.new(1), "NumberRange") end)
+T("nrange.single", function() local r = NumberRange.new(3); A(EQ(r.Min, 3)); return EQ(r.Max, 3) end)
+T("nrange.pair", function() local r = NumberRange.new(1, 5); A(EQ(r.Min, 1)); return EQ(r.Max, 5) end)
+T("nrange.invalid", function() return ERR(function() return NumberRange.new(5, 1) end) end)
+T("nrange.eq", function() return EQ(NumberRange.new(1, 2) == NumberRange.new(1, 2), true) end)
+T("nseq.typeof", function() return TY(NumberSequence.new(1), "NumberSequence") end)
+T("nseq.single", function()
+    local k = NumberSequence.new(0.5).Keypoints
+    A(EQ(#k, 2)); A(EQ(k[1].Time, 0)); A(EQ(k[1].Value, 0.5)); A(EQ(k[2].Time, 1)); return EQ(k[2].Value, 0.5)
+end)
+T("nseq.pair", function()
+    local k = NumberSequence.new(0, 1).Keypoints
+    A(EQ(#k, 2)); A(EQ(k[1].Value, 0)); return EQ(k[2].Value, 1)
+end)
+T("nseq.keypoints", function()
+    local s = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.25, 0.1), NumberSequenceKeypoint.new(1, 0)})
+    local k = s.Keypoints
+    A(EQ(#k, 3)); A(EQ(k[2].Time, 0.5)); A(EQ(k[2].Value, 0.25)); return NEAR(k[2].Envelope, 0.1)
+end)
+T("nseq.bad_start", function()
+    return ERR(function() return NumberSequence.new({NumberSequenceKeypoint.new(0.1, 1), NumberSequenceKeypoint.new(1, 0)}) end)
+end)
+T("nseq.bad_end", function()
+    return ERR(function() return NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.9, 0)}) end)
+end)
+T("nseq.keypoint_type", function() return TY(NumberSequenceKeypoint.new(0, 1), "NumberSequenceKeypoint") end)
+T("nseq.keypoint_envelope_default", function() return EQ(NumberSequenceKeypoint.new(0, 1).Envelope, 0) end)
+T("cseq.typeof", function() return TY(ColorSequence.new(Color3.new()), "ColorSequence") end)
+T("cseq.single", function()
+    local k = ColorSequence.new(Color3.new(1, 0, 0)).Keypoints
+    A(EQ(#k, 2)); A(EQ(k[1].Time, 0)); A(EQ(k[1].Value, Color3.new(1, 0, 0))); return EQ(k[2].Time, 1)
+end)
+T("cseq.pair", function()
+    local k = ColorSequence.new(Color3.new(1, 0, 0), Color3.new(0, 0, 1)).Keypoints
+    A(EQ(k[1].Value, Color3.new(1, 0, 0))); return EQ(k[2].Value, Color3.new(0, 0, 1))
+end)
+T("cseq.keypoint_type", function() return TY(ColorSequenceKeypoint.new(0, Color3.new()), "ColorSequenceKeypoint") end)
+T("cseq.bad_start", function()
+    return ERR(function() return ColorSequence.new({ColorSequenceKeypoint.new(0.5, Color3.new()), ColorSequenceKeypoint.new(1, Color3.new())}) end)
+end)
+
+-- BrickColor
+local bricks = {
+    {1, "White"}, {21, "Bright red"}, {23, "Bright blue"}, {24, "Bright yellow"}, {26, "Black"}, {28, "Dark green"},
+    {37, "Bright green"}, {106, "Bright orange"}, {194, "Medium stone grey"}, {199, "Dark stone grey"},
+    {1001, "Institutional white"}, {1003, "Really black"}, {1004, "Really red"}, {1009, "New Yeller"},
+    {1010, "Really blue"}, {1020, "Lime green"},
+}
+for _, b in ipairs(bricks) do
+    T("brick.number_to_name." .. b[1], function() return EQ(BrickColor.new(b[1]).Name, b[2]) end)
+    T("brick.name_to_number." .. b[1], function() return EQ(BrickColor.new(b[2]).Number, b[1]) end)
+    T("brick.tostring." .. b[1], function() return EQ(tostring(BrickColor.new(b[1])), b[2]) end)
+end
+T("brick.typeof", function() return TY(BrickColor.new(1), "BrickColor") end)
+T("brick.really_red_color", function() return C3EQ(BrickColor.new("Really red").Color, 1, 0, 0) end)
+T("brick.really_blue_color", function() return C3EQ(BrickColor.new("Really blue").Color, 0, 0, 1) end)
+T("brick.from_color3", function() return EQ(BrickColor.new(Color3.new(1, 0, 0)).Name, "Really red") end)
+T("brick.from_rgb", function() return EQ(BrickColor.new(0, 0, 1).Name, "Really blue") end)
+T("brick.unknown_name", function() return EQ(BrickColor.new("Definitely not a colour").Number, 194) end)
+T("brick.White", function() return EQ(BrickColor.White().Number, 1) end)
+T("brick.Gray", function() return EQ(BrickColor.Gray().Number, 194) end)
+T("brick.DarkGray", function() return EQ(BrickColor.DarkGray().Number, 199) end)
+T("brick.Black", function() return EQ(BrickColor.Black().Number, 26) end)
+T("brick.Red", function() return EQ(BrickColor.Red().Number, 21) end)
+T("brick.Yellow", function() return EQ(BrickColor.Yellow().Number, 24) end)
+T("brick.Green", function() return EQ(BrickColor.Green().Number, 28) end)
+T("brick.Blue", function() return EQ(BrickColor.Blue().Number, 23) end)
+T("brick.random", function() return TY(BrickColor.random(), "BrickColor") end)
+T("brick.eq", function() return EQ(BrickColor.new(21) == BrickColor.new("Bright red"), true) end)
+T("brick.rgb_fields", function() local b = BrickColor.new("Really red"); A(NEAR(b.r, 1)); A(NEAR(b.g, 0)); return NEAR(b.b, 0) end)
+
+-- TweenInfo
+T("tweeninfo.defaults", function()
+    local t = TweenInfo.new()
+    A(EQ(t.Time, 1)); A(EQ(t.EasingStyle, Enum.EasingStyle.Quad)); A(EQ(t.EasingDirection, Enum.EasingDirection.Out))
+    A(EQ(t.RepeatCount, 0)); A(EQ(t.Reverses, false)); return EQ(t.DelayTime, 0)
+end)
+T("tweeninfo.full", function()
+    local t = TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 3, true, 0.5)
+    A(EQ(t.Time, 2)); A(EQ(t.EasingStyle, Enum.EasingStyle.Linear)); A(EQ(t.EasingDirection, Enum.EasingDirection.In))
+    A(EQ(t.RepeatCount, 3)); A(EQ(t.Reverses, true)); return EQ(t.DelayTime, 0.5)
+end)
+T("tweeninfo.typeof", function() return TY(TweenInfo.new(), "TweenInfo") end)
+T("tweeninfo.immutable", function() return ERR(function() local t = TweenInfo.new(); t.Time = 5 end) end)
+
+-- Ray / Region3
+T("ray.fields", function() local r = Ray.new(V3(1, 2, 3), V3(0, 0, 10)); A(EQ(r.Origin, V3(1, 2, 3))); return EQ(r.Direction, V3(0, 0, 10)) end)
+T("ray.Unit", function() local r = Ray.new(V3(1, 2, 3), V3(0, 0, 10)).Unit; A(EQ(r.Origin, V3(1, 2, 3))); return EQ(r.Direction, V3(0, 0, 1)) end)
+T("ray.ClosestPoint", function() return EQ(Ray.new(V3(), V3(10, 0, 0)):ClosestPoint(V3(5, 5, 0)), V3(5, 0, 0)) end)
+T("ray.Distance", function() return NEAR(Ray.new(V3(), V3(10, 0, 0)):Distance(V3(5, 5, 0)), 5) end)
+T("ray.typeof", function() return TY(Ray.new(), "Ray") end)
+T("region3.fields", function()
+    local r = Region3.new(V3(0, 0, 0), V3(4, 6, 8))
+    A(EQ(r.Size, V3(4, 6, 8))); return EQ(r.CFrame.Position, V3(2, 3, 4))
+end)
+T("region3.typeof", function() return TY(Region3.new(V3(), V3(1, 1, 1)), "Region3") end)
+T("region3.expand", function()
+    local r = Region3.new(V3(1, 1, 1), V3(3, 3, 3)):ExpandToGrid(4)
+    return EQ(r.Size, V3(4, 4, 4))
+end)
+
+-- Faces / Axes
+T("faces.new", function()
+    local f = Faces.new(Enum.NormalId.Top, Enum.NormalId.Front)
+    A(EQ(f.Top, true)); A(EQ(f.Front, true)); A(EQ(f.Bottom, false)); return EQ(f.Left, false)
+end)
+T("faces.empty", function() local f = Faces.new(); return EQ(f.Top or f.Bottom or f.Left or f.Right or f.Front or f.Back, false) end)
+T("faces.typeof", function() return TY(Faces.new(), "Faces") end)
+T("axes.new", function() local a = Axes.new(Enum.Axis.X, Enum.Axis.Z); A(EQ(a.X, true)); A(EQ(a.Y, false)); return EQ(a.Z, true) end)
+T("axes.normalid", function() local a = Axes.new(Enum.NormalId.Top); return EQ(a.Y, true) end)
+T("axes.typeof", function() return TY(Axes.new(), "Axes") end)
+
+-- PhysicalProperties
+-- per-material defaults live in the generated docs_materials suite (Creator Hub table)
+T("physprops.numbers", function()
+    local p = PhysicalProperties.new(1, 0.5, 0.25)
+    A(EQ(p.Density, 1)); A(EQ(p.Friction, 0.5)); A(EQ(p.Elasticity, 0.25)); A(EQ(p.FrictionWeight, 1)); return EQ(p.ElasticityWeight, 1)
+end)
+T("physprops.full", function()
+    local p = PhysicalProperties.new(2, 0.5, 0.25, 3, 4)
+    A(EQ(p.FrictionWeight, 3)); return EQ(p.ElasticityWeight, 4)
+end)
+T("physprops.typeof", function() return TY(PhysicalProperties.new(1, 1, 1), "PhysicalProperties") end)
+T("physprops.part_default_nil", function() return EQ(Instance.new("Part").CustomPhysicalProperties, nil) end)
+
+-- Font
+T("font.new_defaults", function()
+    local f = Font.new("rbxasset://fonts/families/GothamSSm.json")
+    A(EQ(f.Family, "rbxasset://fonts/families/GothamSSm.json")); A(EQ(f.Weight, Enum.FontWeight.Regular)); return EQ(f.Style, Enum.FontStyle.Normal)
+end)
+T("font.new_full", function()
+    local f = Font.new("rbxasset://fonts/families/Roboto.json", Enum.FontWeight.Bold, Enum.FontStyle.Italic)
+    A(EQ(f.Weight, Enum.FontWeight.Bold)); return EQ(f.Style, Enum.FontStyle.Italic)
+end)
+T("font.fromName", function() return EQ(Font.fromName("Roboto").Family, "rbxasset://fonts/families/Roboto.json") end)
+T("font.fromEnum_legacy", function() return EQ(Font.fromEnum(Enum.Font.Legacy).Family, "rbxasset://fonts/families/LegacyArial.json") end)
+T("font.fromEnum_sourcesans", function() return EQ(Font.fromEnum(Enum.Font.SourceSans).Family, "rbxasset://fonts/families/SourceSansPro.json") end)
+T("font.fromEnum_gothambold", function()
+    local f = Font.fromEnum(Enum.Font.GothamBold)
+    A(EQ(f.Family, "rbxasset://fonts/families/GothamSSm.json")); return EQ(f.Weight, Enum.FontWeight.Bold)
+end)
+T("font.typeof", function() return TY(Font.new("rbxasset://fonts/families/Roboto.json"), "Font") end)
+T("font.eq", function()
+    return EQ(Font.new("rbxasset://fonts/families/Roboto.json") == Font.new("rbxasset://fonts/families/Roboto.json"), true)
+end)
+
+-- DateTime
+T("datetime.epoch_iso", function() return EQ(DateTime.fromUnixTimestamp(0):ToIsoDate(), "1970-01-01T00:00:00Z") end)
+T("datetime.y2k", function() return EQ(DateTime.fromUniversalTime(2000, 1, 1, 0, 0, 0, 0).UnixTimestamp, 946684800) end)
+T("datetime.y2k_iso", function() return EQ(DateTime.fromUnixTimestamp(946684800):ToIsoDate(), "2000-01-01T00:00:00Z") end)
+T("datetime.fromIsoDate", function() return EQ(DateTime.fromIsoDate("2000-01-01T00:00:00Z").UnixTimestamp, 946684800) end)
+T("datetime.millis", function()
+    local d = DateTime.fromUnixTimestampMillis(1234567)
+    A(EQ(d.UnixTimestampMillis, 1234567)); return EQ(d.UnixTimestamp, 1234)
+end)
+T("datetime.ToUniversalTime", function()
+    local t = DateTime.fromUnixTimestamp(951782400 + 3723):ToUniversalTime()
+    A(EQ(t.Year, 2000)); A(EQ(t.Month, 2)); A(EQ(t.Day, 29)); A(EQ(t.Hour, 1)); A(EQ(t.Minute, 2)); return EQ(t.Second, 3)
+end)
+T("datetime.FormatUniversalTime", function()
+    return EQ(DateTime.fromUnixTimestamp(946684800):FormatUniversalTime("YYYY-MM-DD", "en-us"), "2000-01-01")
+end)
+T("datetime.now_type", function() return TY(DateTime.now(), "DateTime") end)
+T("datetime.now_recent", function() return EQ(math.abs(DateTime.now().UnixTimestamp - os.time()) < 5, true) end)
+
+-- Random
+T("random.typeof", function() return TY(Random.new(1), "Random") end)
+T("random.deterministic", function() return EQ(Random.new(42):NextNumber(), Random.new(42):NextNumber()) end)
+T("random.deterministic_int", function() return EQ(Random.new(7):NextInteger(1, 1000000), Random.new(7):NextInteger(1, 1000000)) end)
+T("random.range", function()
+    local r = Random.new(3)
+    for _ = 1, 200 do local x = r:NextNumber(); if x < 0 or x >= 1 then return false, "out of range " .. x end end
+    return true
+end)
+T("random.int_range", function()
+    local r = Random.new(4)
+    for _ = 1, 200 do local x = r:NextInteger(-3, 3); if x < -3 or x > 3 or x % 1 ~= 0 then return false, "bad " .. x end end
+    return true
+end)
+T("random.number_range", function()
+    local r = Random.new(5)
+    for _ = 1, 100 do local x = r:NextNumber(5, 10); if x < 5 or x > 10 then return false, "bad " .. x end end
+    return true
+end)
+T("random.clone", function()
+    local a = Random.new(99); a:NextNumber()
+    local b = a:Clone()
+    return EQ(a:NextNumber(), b:NextNumber())
+end)
+T("random.unit_vector", function() return NEAR(Random.new(1):NextUnitVector().Magnitude, 1, 1e-5) end)
+
+-- Enum objects
+T("enum.global_typeof", function() return TY(Enum, "Enums") end)
+T("enum.global_tostring", function() return EQ(tostring(Enum), "Enums") end)
+T("enum.enum_typeof", function() return TY(Enum.KeyCode, "Enum") end)
+T("enum.item_typeof", function() return TY(Enum.KeyCode.A, "EnumItem") end)
+T("enum.GetEnums", function() local e = Enum:GetEnums(); A(TY(e, "table")); return EQ(#e > 500, true) end)
+T("enum.GetEnums_contains", function()
+    for _, e in ipairs(Enum:GetEnums()) do if e == Enum.Material then return true end end
+    return false, "Enum.Material missing"
+end)
+T("enum.GetEnumItems_identity", function()
+    for _, i in ipairs(Enum.Material:GetEnumItems()) do if i == Enum.Material.Plastic then return true end end
+    return false, "Plastic missing"
+end)
+T("enum.item_not_number", function() return EQ(Enum.KeyCode.A == 97, false) end)
+T("enum.item_identity", function() return EQ(rawequal(Enum.KeyCode.A, Enum.KeyCode.A), true) end)
+T("enum.item_table_key", function() local t = {[Enum.KeyCode.A] = 1}; return EQ(t[Enum.KeyCode.A], 1) end)
+T("enum.invalid_item", function() return ERR(function() return Enum.KeyCode.NotAKey end) end)
+T("enum.invalid_enum", function() return ERR(function() return Enum.NotAnEnum end) end)
+T("enum.item_readonly", function() return ERR(function() Enum.KeyCode.A.Name = "B" end) end)
+T("enum.FromName_missing", function() return EQ(Enum.KeyCode:FromName("NotAKey"), nil) end)
+T("enum.FromValue_missing", function() return EQ(Enum.KeyCode:FromValue(-12345), nil) end)
+T("enum.item_compare_errors", function() return ERR(function() return Enum.KeyCode.A < Enum.KeyCode.B end) end)
+
+-- signals / connections
+T("signal.typeof", function() return TY(Instance.new("Part").Changed, "RBXScriptSignal") end)
+T("signal.connect_type", function()
+    local c = Instance.new("Part").Changed:Connect(function() end)
+    A(TY(c, "RBXScriptConnection")); return EQ(c.Connected, true)
+end)
+T("signal.connection_tostring", function()
+    local c = Instance.new("Part").Changed:Connect(function() end); return EQ(tostring(c), "Connection")
+end)
+T("signal.disconnect", function()
+    local c = Instance.new("Part").Changed:Connect(function() end); c:Disconnect(); return EQ(c.Connected, false)
+end)
+T("signal.disconnect_twice", function()
+    local c = Instance.new("Part").Changed:Connect(function() end); c:Disconnect(); return OK(function() c:Disconnect() end)
+end)
+T("signal.connect_nonfunction", function() return ERR(function() Instance.new("Part").Changed:Connect(5) end) end)
+T("signal.bindable_fire", function()
+    local b, got = Instance.new("BindableEvent"), nil
+    b.Event:Connect(function(a, c) got = a .. c end)
+    b:Fire("x", "y"); task.wait()
+    return EQ(got, "xy")
+end)
+T("signal.disconnected_not_fired", function()
+    local b, n = Instance.new("BindableEvent"), 0
+    local c = b.Event:Connect(function() n += 1 end)
+    c:Disconnect(); b:Fire(); task.wait()
+    return EQ(n, 0)
+end)
+T("signal.once", function()
+    local b, n = Instance.new("BindableEvent"), 0
+    local c = b.Event:Once(function() n += 1 end)
+    b:Fire(); task.wait(); b:Fire(); task.wait()
+    A(EQ(n, 1)); return EQ(c.Connected, false)
+end)
+T("signal.multiple_handlers", function()
+    local b, n = Instance.new("BindableEvent"), 0
+    for _ = 1, 3 do b.Event:Connect(function() n += 1 end) end
+    b:Fire(); task.wait()
+    return EQ(n, 3)
+end)
+T("signal.wait", function()
+    local b = Instance.new("BindableEvent")
+    task.delay(0, function() b:Fire(42) end)
+    return EQ(b.Event:Wait(), 42)
+end)
+T("signal.table_arg_identity", function()
+    local b, t, got = Instance.new("BindableEvent"), {}, nil
+    b.Event:Connect(function(x) got = x end)
+    b:Fire(t); task.wait()
+    A(TY(got, "table")); return EQ(rawequal(got, t), false)
+end)
+T("signal.bindable_function", function()
+    local f = Instance.new("BindableFunction")
+    f.OnInvoke = function(a, b) return a + b end
+    return EQ(f:Invoke(2, 3), 5)
+end)
+
+-- RaycastParams / OverlapParams
+T("raycastparams.defaults", function()
+    local r = RaycastParams.new()
+    A(EQ(r.FilterType, Enum.RaycastFilterType.Exclude)); A(EQ(#r.FilterDescendantsInstances, 0))
+    A(EQ(r.IgnoreWater, false)); A(EQ(r.CollisionGroup, "Default")); return EQ(r.RespectCanCollide, false)
+end)
+T("raycastparams.typeof", function() return TY(RaycastParams.new(), "RaycastParams") end)
+T("raycastparams.mutable", function() local r = RaycastParams.new(); r.IgnoreWater = true; return EQ(r.IgnoreWater, true) end)
+T("raycastparams.filter_list", function()
+    local r, p = RaycastParams.new(), Instance.new("Part"); r.FilterDescendantsInstances = {p}
+    return EQ(r.FilterDescendantsInstances[1], p)
+end)
+T("overlapparams.defaults", function()
+    local o = OverlapParams.new()
+    A(EQ(o.FilterType, Enum.RaycastFilterType.Exclude)); A(EQ(o.MaxParts, 0)); return EQ(o.CollisionGroup, "Default")
+end)
+T("overlapparams.typeof", function() return TY(OverlapParams.new(), "OverlapParams") end)
+
+-- Content
+T("content.none", function() local c = Content.none; A(TY(c, "Content")); return EQ(c.SourceType, Enum.ContentSourceType.None) end)
+T("content.fromUri", function()
+    local c = Content.fromUri("rbxassetid://123")
+    A(EQ(c.SourceType, Enum.ContentSourceType.Uri)); return EQ(c.Uri, "rbxassetid://123")
+end)
+T("content.none_uri_nil", function() return EQ(Content.none.Uri, nil) end)
+__print("@@E|" .. __suite .. "|" .. __total .. "|" .. __pass .. "|" .. __fail)
