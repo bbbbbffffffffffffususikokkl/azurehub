@@ -1,0 +1,3 @@
+# downloaded API dump / reflection DB / Creator Hub sources (re-fetched by the generators)
+detections/.cache/
+__pycache__/

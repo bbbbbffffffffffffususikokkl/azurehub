@@ -1,0 +1,425 @@
+-- envlogger detection harness (prepended to every suite by tools/build_suites.py)
+-- Every check is isolated in pcall: a check passes only when its function returns exactly `true`.
+-- Result protocol (one print per line, parsed by tools/run_detections.py):
+--   @@B|<suite>                         suite started
+--   @@F|<check id>|<detail>             a failed check
+--   @@E|<suite>|<total>|<pass>|<fail>   suite finished
+-- The suites are plain Luau, so they can also be pasted into a real executor to confirm the
+-- expectations against a live Roblox client.
+local __suite = "manual_instance"
+local __total, __pass, __fail = 0, 0, 0
+local __pcall, __tostring, __typeof, __print, __type = pcall, tostring, typeof, print, type
+local __find, __abs, __max = string.find, math.abs, math.max
+local function S(v)
+    local okT, t = __pcall(__typeof, v)
+    local okS, s = __pcall(__tostring, v)
+    return (okT and t or "?") .. ":" .. (okS and s or "<tostring error>")
+end
+local function T(id, f)
+    __total = __total + 1
+    local ok, r, why = __pcall(f)
+    if ok and r == true then
+        __pass = __pass + 1
+        return
+    end
+    __fail = __fail + 1
+    local detail
+    if not ok then
+        detail = "error: " .. __tostring(r)
+    elseif why ~= nil then
+        detail = __tostring(why)
+    else
+        detail = "returned " .. S(r)
+    end
+    __print("@@F|" .. id .. "|" .. detail)
+end
+-- exact equality
+local function EQ(a, b)
+    if a == b then return true end
+    return false, "expected " .. S(b) .. " got " .. S(a)
+end
+-- numeric equality within a relative tolerance (default 1e-6)
+local function NEAR(a, b, eps)
+    if a == b then return true end
+    if __type(a) == "number" and __type(b) == "number" and __abs(a - b) <= (eps or 1e-6) * __max(1, __abs(b)) then
+        return true
+    end
+    return false, "expected ~" .. S(b) .. " got " .. S(a)
+end
+-- component-wise tolerance for a list of numbers
+local function NEARV(got, exp, eps)
+    for i = 1, #exp do
+        local g, e = got[i], exp[i]
+        if not (g == e or (__type(g) == "number" and __abs(g - e) <= (eps or 1e-6) * __max(1, __abs(e)))) then
+            return false, "component " .. i .. " expected ~" .. __tostring(e) .. " got " .. __tostring(g)
+        end
+    end
+    return true
+end
+local function TY(v, t)
+    local got = __typeof(v)
+    if got == t then return true end
+    return false, "expected typeof " .. t .. " got " .. got .. " (" .. S(v) .. ")"
+end
+-- the call must raise; when `needle` is given the message must contain it (plain find)
+local function ERR(f, needle)
+    local ok, e = __pcall(f)
+    if ok then return false, "expected an error, call succeeded" end
+    if needle ~= nil and not __find(__tostring(e), needle, 1, true) then
+        return false, "error message mismatch: " .. __tostring(e)
+    end
+    return true
+end
+-- the call must not raise
+local function OK(f)
+    local ok, e = __pcall(f)
+    if ok then return true end
+    return false, "unexpected error: " .. __tostring(e)
+end
+-- assert one sub-check inside a multi-step check: A(EQ(x, 1)); A(TY(y, "Vector3")); return true
+local function A(r, why)
+    if r ~= true then error(why or "sub-check failed", 0) end
+end
+__print("@@B|" .. __suite)
+
+-- Instance semantics: hierarchy, lifetime, property coercion and validation, attributes, tags,
+-- change signals, cloning.
+local function new(cls, name, parent)
+    local o = Instance.new(cls)
+    if name then o.Name = name end
+    if parent then o.Parent = parent end
+    return o
+end
+
+-- hierarchy
+T("inst.parent_set", function() local a, b = new("Folder", "A"), new("Folder", "B"); a.Parent = b; return EQ(a.Parent, b) end)
+T("inst.new_with_parent", function() local b = new("Folder"); local a = Instance.new("Part", b); return EQ(a.Parent, b) end)
+T("inst.children_order", function()
+    local root = new("Folder")
+    for i = 1, 5 do new("Folder", "c" .. i, root) end
+    local names = {}
+    for _, c in ipairs(root:GetChildren()) do names[#names + 1] = c.Name end
+    return EQ(table.concat(names, ","), "c1,c2,c3,c4,c5")
+end)
+T("inst.children_fresh_table", function() local r = new("Folder"); return EQ(rawequal(r:GetChildren(), r:GetChildren()), false) end)
+T("inst.children_empty", function() local c = new("Folder"):GetChildren(); A(TY(c, "table")); return EQ(#c, 0) end)
+T("inst.descendants", function()
+    local r = new("Folder"); local a = new("Folder", "a", r); new("Part", "b", a); new("Part", "c", r)
+    return EQ(#r:GetDescendants(), 3)
+end)
+T("inst.find_first_child", function() local r = new("Folder"); local a = new("Part", "X", r); return EQ(r:FindFirstChild("X"), a) end)
+T("inst.find_first_child_missing", function() return EQ(new("Folder"):FindFirstChild("nope"), nil) end)
+T("inst.find_first_child_recursive", function()
+    local r = new("Folder"); local a = new("Folder", "a", r); local deep = new("Part", "deep", a)
+    A(EQ(r:FindFirstChild("deep"), nil)); return EQ(r:FindFirstChild("deep", true), deep)
+end)
+T("inst.find_first_child_first_match", function()
+    local r = new("Folder"); local first = new("Part", "dup", r); new("Folder", "dup", r)
+    return EQ(r:FindFirstChild("dup"), first)
+end)
+T("inst.find_of_class", function()
+    local r = new("Folder"); new("Folder", "f", r); local p = new("Part", "p", r)
+    A(EQ(r:FindFirstChildOfClass("Part"), p)); return EQ(r:FindFirstChildOfClass("BasePart"), nil)
+end)
+T("inst.find_which_isa", function() local r = new("Folder"); local p = new("WedgePart", "w", r); return EQ(r:FindFirstChildWhichIsA("BasePart"), p) end)
+T("inst.find_which_isa_recursive", function()
+    local r = new("Folder"); local m = new("Model", "m", r); local p = new("Part", "p", m)
+    return EQ(r:FindFirstChildWhichIsA("BasePart", true), p)
+end)
+T("inst.find_ancestor", function()
+    local a = new("Folder", "Top"); local b = new("Folder", "Mid", a); local c = new("Part", "Leaf", b)
+    A(EQ(c:FindFirstAncestor("Top"), a)); A(EQ(c:FindFirstAncestorOfClass("Folder"), b)); return EQ(c:FindFirstAncestorWhichIsA("Instance"), b)
+end)
+T("inst.find_descendant", function()
+    local r = new("Folder"); local a = new("Folder", "a", r); local d = new("Part", "needle", a)
+    return EQ(r:FindFirstDescendant("needle"), d)
+end)
+T("inst.is_descendant", function()
+    local a = new("Folder"); local b = new("Folder", nil, a); local c = new("Part", nil, b)
+    A(EQ(c:IsDescendantOf(a), true)); A(EQ(a:IsAncestorOf(c), true)); A(EQ(a:IsDescendantOf(c), false)); return EQ(c:IsDescendantOf(c), false)
+end)
+T("inst.full_name_unparented", function()
+    local a = new("Folder", "A"); local b = new("Folder", "B", a); local c = new("Part", "C", b)
+    return EQ(c:GetFullName(), "A.B.C")
+end)
+T("inst.full_name_single", function() return EQ(new("Part", "Solo"):GetFullName(), "Solo") end)
+T("inst.full_name_workspace", function()
+    local p = new("Part", "Probe_zq", workspace)
+    local n = p:GetFullName(); p:Destroy()
+    return EQ(n, "Workspace.Probe_zq")
+end)
+T("inst.self_parent", function() local a = new("Folder"); return ERR(function() a.Parent = a end) end)
+T("inst.circular_parent", function()
+    local a = new("Folder"); local b = new("Folder", nil, a)
+    return ERR(function() a.Parent = b end)
+end)
+T("inst.parent_type_error", function() return ERR(function() new("Part").Parent = "workspace" end, "Unable to assign property Parent") end)
+T("inst.reparent_moves", function()
+    local a, b = new("Folder"), new("Folder"); local c = new("Part", nil, a); c.Parent = b
+    A(EQ(#a:GetChildren(), 0)); return EQ(#b:GetChildren(), 1)
+end)
+T("inst.isa_unknown_false", function() return EQ(new("Part"):IsA("DefinitelyNotAClass"), false) end)
+T("inst.isa_case_sensitive", function() return EQ(new("Part"):IsA("part"), false) end)
+T("inst.equality_identity", function() local a = new("Part"); local r = new("Folder"); a.Parent = r; return EQ(r:GetChildren()[1] == a, true) end)
+T("inst.table_key", function() local a = new("Part"); local t = {[a] = 1}; return EQ(t[a], 1) end)
+T("inst.workspace_parent", function() return EQ(workspace.Parent, game) end)
+T("inst.game_parent", function() return EQ(game.Parent, nil) end)
+T("inst.workspace_terrain", function() return EQ(workspace:FindFirstChildOfClass("Terrain"), workspace.Terrain) end)
+T("inst.camera", function() local c = workspace.CurrentCamera; A(TY(c, "Instance")); return EQ(c.ClassName, "Camera") end)
+
+-- hierarchy events
+T("inst.event.child_added", function()
+    local r, got = new("Folder"), nil
+    r.ChildAdded:Connect(function(c) got = c end)
+    local c = new("Part", nil, r); task.wait()
+    return EQ(got, c)
+end)
+T("inst.event.child_removed", function()
+    local r, got = new("Folder"), nil
+    local c = new("Part", nil, r)
+    r.ChildRemoved:Connect(function(x) got = x end)
+    c.Parent = nil; task.wait()
+    return EQ(got, c)
+end)
+T("inst.event.descendant_added", function()
+    local r, n = new("Folder"), 0
+    r.DescendantAdded:Connect(function() n += 1 end)
+    local m = new("Model"); new("Part", nil, m); m.Parent = r; task.wait()
+    return EQ(n, 2)
+end)
+T("inst.event.ancestry_changed", function()
+    local r, c = new("Folder"), new("Part")
+    local got
+    c.AncestryChanged:Connect(function(child, parent) got = {child, parent} end)
+    c.Parent = r; task.wait()
+    return EQ(got and got[1] == c and got[2] == r, true)
+end)
+T("inst.event.destroying", function()
+    local c, fired = new("Part"), false
+    c.Destroying:Connect(function() fired = true end)
+    c:Destroy(); task.wait()
+    return EQ(fired, true)
+end)
+
+-- lifetime
+T("inst.destroy_parent_nil", function() local r = new("Folder"); local c = new("Part", nil, r); c:Destroy(); return EQ(c.Parent, nil) end)
+T("inst.destroy_locks_parent", function()
+    local c = new("Part"); c:Destroy()
+    return ERR(function() c.Parent = new("Folder") end, "The Parent property of Part is locked")
+end)
+T("inst.destroy_descendants", function()
+    local r = new("Folder"); local c = new("Folder", nil, r); local g = new("Part", nil, c)
+    r:Destroy()
+    return EQ(g.Parent == nil and c.Parent == nil, true)
+end)
+T("inst.destroy_twice_ok", function() local c = new("Part"); c:Destroy(); return OK(function() c:Destroy() end) end)
+T("inst.destroyed_still_readable", function() local c = new("Part", "Keep"); c:Destroy(); return EQ(c.Name, "Keep") end)
+T("inst.clear_all_children", function()
+    local r = new("Folder"); for _ = 1, 4 do new("Part", nil, r) end
+    r:ClearAllChildren()
+    return EQ(#r:GetChildren(), 0)
+end)
+
+-- cloning
+T("inst.clone_props", function()
+    local p = new("Part", "Orig"); p.Anchored = true; p.Size = Vector3.new(1, 2, 3)
+    local c = p:Clone()
+    A(EQ(c.Name, "Orig")); A(EQ(c.Anchored, true)); A(EQ(c.Size, Vector3.new(1, 2, 3))); return EQ(c == p, false)
+end)
+T("inst.clone_unparented", function() local r = new("Folder"); local p = new("Part", nil, r); return EQ(p:Clone().Parent, nil) end)
+T("inst.clone_children", function()
+    local r = new("Model"); new("Part", "a", r); new("Part", "b", r)
+    local c = r:Clone()
+    A(EQ(#c:GetChildren(), 2)); return EQ(c:FindFirstChild("a").Parent, c)
+end)
+T("inst.clone_not_archivable", function() local p = new("Part"); p.Archivable = false; return EQ(p:Clone(), nil) end)
+T("inst.clone_skips_unarchivable_child", function()
+    local r = new("Model"); local a = new("Part", "a", r); new("Part", "b", r); a.Archivable = false
+    return EQ(#r:Clone():GetChildren(), 1)
+end)
+T("inst.clone_attributes", function() local p = new("Part"); p:SetAttribute("k", 5); return EQ(p:Clone():GetAttribute("k"), 5) end)
+T("inst.clone_tags", function() local p = new("Part"); p:AddTag("T1"); return EQ(p:Clone():HasTag("T1"), true) end)
+
+-- property coercion and validation
+T("prop.string_from_number", function() local p = new("Part"); p.Name = 5; return EQ(p.Name, "5") end)
+T("prop.string_nil_errors", function() return ERR(function() new("Part").Name = nil end, "Unable to assign property Name. string expected, got nil") end)
+T("prop.string_table_errors", function() return ERR(function() new("Part").Name = {} end, "Unable to assign property Name. string expected, got table") end)
+T("prop.bool_errors", function() return ERR(function() new("Part").Anchored = "yes" end, "Unable to assign property Anchored") end)
+T("prop.bool_nil_errors", function() return ERR(function() new("Frame").Visible = nil end, "Unable to assign property Visible") end)
+T("prop.number_errors", function() return ERR(function() new("Part").Transparency = "abc" end, "Unable to assign property Transparency") end)
+T("prop.vector_errors", function() return ERR(function() new("Part").Size = 5 end, "Unable to assign property Size. Vector3 expected, got number") end)
+T("prop.cframe_errors", function() return ERR(function() new("Part").CFrame = Vector3.new() end, "Unable to assign property CFrame. CFrame expected, got Vector3") end)
+T("prop.color_errors", function() return ERR(function() new("Part").Color = BrickColor.new(1) end, "Unable to assign property Color. Color3 expected, got BrickColor") end)
+T("prop.enum_by_item", function() local p = new("Part"); p.Material = Enum.Material.Neon; return EQ(p.Material, Enum.Material.Neon) end)
+T("prop.enum_by_name", function() local p = new("Part"); p.Material = "Neon"; return EQ(p.Material, Enum.Material.Neon) end)
+T("prop.enum_by_value", function() local p = new("Part"); p.Material = 288; return EQ(p.Material, Enum.Material.Neon) end)
+T("prop.enum_bad_name", function() return ERR(function() new("Part").Material = "NotAMaterial" end) end)
+T("prop.enum_wrong_enum", function() return ERR(function() new("Part").Material = Enum.KeyCode.A end) end)
+T("prop.float32_readback", function()
+    local p = new("Part"); p.Transparency = 0.1
+    A(EQ(p.Transparency == 0.1, false)); return EQ(p.Transparency, 0.10000000149011612)
+end)
+T("prop.float32_reflectance", function() local p = new("Part"); p.Reflectance = 0.3; return EQ(p.Reflectance, 0.30000001192092896) end)
+T("prop.double_exact", function() local v = new("NumberValue"); v.Value = 0.1; return EQ(v.Value, 0.1) end)
+T("prop.int_value", function() local v = new("IntValue"); v.Value = 42; return EQ(v.Value, 42) end)
+T("prop.position_cframe", function() local p = new("Part"); p.Position = Vector3.new(1, 2, 3); return EQ(p.CFrame.Position, Vector3.new(1, 2, 3)) end)
+T("prop.cframe_position", function() local p = new("Part"); p.CFrame = CFrame.new(5, 6, 7); return EQ(p.Position, Vector3.new(5, 6, 7)) end)
+T("prop.cframe_orientation", function()
+    local p = new("Part"); p.CFrame = CFrame.Angles(0, math.rad(90), 0)
+    return NEARV({p.Orientation.X, p.Orientation.Y, p.Orientation.Z}, {0, 90, 0}, 1e-4)
+end)
+T("prop.orientation_cframe", function()
+    local p = new("Part"); p.Orientation = Vector3.new(0, 90, 0)
+    local lv = p.CFrame.LookVector
+    return NEARV({lv.X, lv.Y, lv.Z}, {-1, 0, 0}, 1e-5)
+end)
+T("prop.position_keeps_rotation", function()
+    local p = new("Part"); p.CFrame = CFrame.Angles(0, 1, 0); p.Position = Vector3.new(9, 9, 9)
+    return NEARV({p.CFrame:ToEulerAnglesYXZ()}, {0, 1, 0}, 1e-5)
+end)
+T("prop.brickcolor_to_color", function()
+    local p = new("Part"); p.BrickColor = BrickColor.new("Really red")
+    return EQ(p.Color, Color3.new(1, 0, 0))
+end)
+T("prop.color_to_brickcolor", function() local p = new("Part"); p.Color = Color3.new(1, 0, 0); return EQ(p.BrickColor.Name, "Really red") end)
+T("prop.humanoid_health_clamp", function() local h = new("Humanoid"); h.Health = 500; return EQ(h.Health, h.MaxHealth) end)
+T("prop.humanoid_health_floor", function() local h = new("Humanoid"); h.Health = -5; return EQ(h.Health, 0) end)
+T("prop.objectvalue", function() local v, p = new("ObjectValue"), new("Part"); v.Value = p; return EQ(v.Value, p) end)
+T("prop.objectvalue_type_error", function() return ERR(function() new("ObjectValue").Value = "x" end) end)
+T("prop.stringvalue_number", function() local v = new("StringValue"); v.Value = 12; return EQ(v.Value, "12") end)
+T("prop.readonly_classname", function() return ERR(function() new("Part").ClassName = "Model" end) end)
+T("prop.unknown_write", function() return ERR(function() new("Part").NotAProperty_zq = 1 end, "NotAProperty_zq is not a valid member of Part \"Part\"") end)
+T("prop.method_write", function() return ERR(function() new("Part").Destroy = function() end end) end)
+T("prop.name_child_shadow", function()
+    local r = new("Model"); local c = new("Part", "Name", r)
+    return EQ(r.Name, "Model")
+end)
+T("prop.child_by_index", function() local r = new("Folder"); local c = new("Part", "Kid", r); return EQ(r.Kid, c) end)
+T("prop.child_missing_errors", function()
+    local r = new("Folder", "Box")
+    return ERR(function() return r.Kid end, 'Kid is not a valid member of Folder "Box"')
+end)
+
+-- change signals
+T("signal.changed_property_name", function()
+    local p, got = new("Part"), nil
+    p.Changed:Connect(function(prop) got = prop end)
+    p.Name = "Renamed"; task.wait()
+    return EQ(got, "Name")
+end)
+T("signal.changed_not_on_same_value", function()
+    local p, n = new("Part"), 0
+    p.Anchored = false
+    p.Changed:Connect(function() n += 1 end)
+    p.Anchored = false; task.wait()
+    return EQ(n, 0)
+end)
+T("signal.valuebase_changed_value", function()
+    local v, got = new("StringValue"), nil
+    v.Changed:Connect(function(x) got = x end)
+    v.Value = "hello"; task.wait()
+    return EQ(got, "hello")
+end)
+T("signal.intvalue_changed_value", function()
+    local v, got = new("IntValue"), nil
+    v.Changed:Connect(function(x) got = x end)
+    v.Value = 7; task.wait()
+    return EQ(got, 7)
+end)
+T("signal.property_changed", function()
+    local p, n = new("Part"), 0
+    p:GetPropertyChangedSignal("Transparency"):Connect(function() n += 1 end)
+    p.Transparency = 0.5; p.Name = "x"; task.wait()
+    return EQ(n, 1)
+end)
+T("signal.property_changed_invalid", function() return ERR(function() new("Part"):GetPropertyChangedSignal("NotAProp_zq") end) end)
+T("signal.property_changed_no_args", function()
+    local p, cnt = new("Part"), -1
+    p:GetPropertyChangedSignal("Name"):Connect(function(...) cnt = select("#", ...) end)
+    p.Name = "y"; task.wait()
+    return EQ(cnt, 0)
+end)
+
+-- attributes
+local attrValues = {
+    {"string", "hello"}, {"number", 3.5}, {"boolean", true}, {"Vector3", Vector3.new(1, 2, 3)}, {"Vector2", Vector2.new(1, 2)},
+    {"Color3", Color3.new(1, 0, 0)}, {"UDim", UDim.new(1, 2)}, {"UDim2", UDim2.new(1, 2, 3, 4)}, {"BrickColor", BrickColor.new(21)},
+    {"NumberRange", NumberRange.new(1, 2)}, {"Rect", Rect.new(1, 2, 3, 4)}, {"CFrame", CFrame.new(1, 2, 3)},
+    {"Font", Font.fromEnum(Enum.Font.Gotham)}, {"NumberSequence", NumberSequence.new(1)}, {"ColorSequence", ColorSequence.new(Color3.new())},
+}
+for _, a in ipairs(attrValues) do
+    T("attr.roundtrip." .. a[1], function() local p = new("Part"); p:SetAttribute("v", a[2]); return EQ(p:GetAttribute("v"), a[2]) end)
+    T("attr.typeof." .. a[1], function() local p = new("Part"); p:SetAttribute("v", a[2]); return TY(p:GetAttribute("v"), a[1]) end)
+end
+T("attr.enumitem_rejected", function() return ERR(function() new("Part"):SetAttribute("e", Enum.Material.Neon) end) end)
+T("attr.missing_nil", function() return EQ(new("Part"):GetAttribute("nothing"), nil) end)
+T("attr.remove_with_nil", function()
+    local p = new("Part"); p:SetAttribute("k", 1); p:SetAttribute("k", nil)
+    return EQ(next(p:GetAttributes()), nil)
+end)
+T("attr.get_attributes", function()
+    local p = new("Part"); p:SetAttribute("a", 1); p:SetAttribute("b", "x")
+    local t = p:GetAttributes()
+    return EQ(t.a == 1 and t.b == "x", true)
+end)
+T("attr.table_rejected", function() return ERR(function() new("Part"):SetAttribute("t", {}) end) end)
+T("attr.instance_rejected", function() return ERR(function() new("Part"):SetAttribute("i", new("Part")) end) end)
+T("attr.function_rejected", function() return ERR(function() new("Part"):SetAttribute("f", print) end) end)
+T("attr.bad_name_space", function() return ERR(function() new("Part"):SetAttribute("has space", 1) end) end)
+T("attr.bad_name_rbx", function() return ERR(function() new("Part"):SetAttribute("RBXReserved", 1) end) end)
+T("attr.bad_name_long", function() return ERR(function() new("Part"):SetAttribute(string.rep("a", 101), 1) end) end)
+T("attr.changed_signal", function()
+    local p, got = new("Part"), nil
+    p.AttributeChanged:Connect(function(name) got = name end)
+    p:SetAttribute("watched", 1); task.wait()
+    return EQ(got, "watched")
+end)
+T("attr.changed_specific", function()
+    local p, n = new("Part"), 0
+    p:GetAttributeChangedSignal("x"):Connect(function() n += 1 end)
+    p:SetAttribute("x", 1); p:SetAttribute("y", 1); task.wait()
+    return EQ(n, 1)
+end)
+T("attr.integer_is_number", function() local p = new("Part"); p:SetAttribute("n", 3); return EQ(math.type and true or typeof(p:GetAttribute("n")) == "number", true) end)
+
+-- tags
+T("tag.add_has", function() local p = new("Part"); p:AddTag("Alpha"); return EQ(p:HasTag("Alpha"), true) end)
+T("tag.missing", function() return EQ(new("Part"):HasTag("Nope"), false) end)
+T("tag.get_tags", function() local p = new("Part"); p:AddTag("A"); p:AddTag("B"); return EQ(#p:GetTags(), 2) end)
+T("tag.no_duplicates", function() local p = new("Part"); p:AddTag("A"); p:AddTag("A"); return EQ(#p:GetTags(), 1) end)
+T("tag.remove", function() local p = new("Part"); p:AddTag("A"); p:RemoveTag("A"); return EQ(p:HasTag("A"), false) end)
+T("tag.collection_service", function()
+    local cs = game:GetService("CollectionService")
+    local p = new("Part"); cs:AddTag(p, "CSTag_zq")
+    A(EQ(cs:HasTag(p, "CSTag_zq"), true)); return EQ(p:HasTag("CSTag_zq"), true)
+end)
+T("tag.get_tagged_parented", function()
+    local cs = game:GetService("CollectionService")
+    local p = new("Part"); p:AddTag("Tagged_zq"); p.Parent = workspace
+    local found = false
+    for _, x in ipairs(cs:GetTagged("Tagged_zq")) do if x == p then found = true end end
+    p:Destroy()
+    return EQ(found, true)
+end)
+T("tag.get_all_tags", function() return TY(game:GetService("CollectionService"):GetAllTags(), "table") end)
+
+-- WaitForChild
+T("wfc.existing", function() local r = new("Folder"); local c = new("Part", "Here", r); return EQ(r:WaitForChild("Here"), c) end)
+T("wfc.timeout_nil", function() local r = new("Folder"); return EQ(r:WaitForChild("Never", 0.05), nil) end)
+T("wfc.late_child", function()
+    local r = new("Folder")
+    task.delay(0.02, function() new("Part", "Late", r) end)
+    local c = r:WaitForChild("Late", 2)
+    return EQ(c and c.Name, "Late")
+end)
+
+-- pivots
+T("pivot.part", function() local p = new("Part"); p.CFrame = CFrame.new(1, 2, 3); return EQ(p:GetPivot(), p.CFrame) end)
+T("pivot.part_pivotto", function() local p = new("Part"); p:PivotTo(CFrame.new(4, 5, 6)); return EQ(p.Position, Vector3.new(4, 5, 6)) end)
+T("pivot.model_moves_parts", function()
+    local m = new("Model"); local p = new("Part", nil, m); p.CFrame = CFrame.new(0, 0, 0)
+    m.PrimaryPart = p
+    m:PivotTo(CFrame.new(10, 0, 0))
+    return EQ(p.Position, Vector3.new(10, 0, 0))
+end)
+__print("@@E|" .. __suite .. "|" .. __total .. "|" .. __pass .. "|" .. __fail)
