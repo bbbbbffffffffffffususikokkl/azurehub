@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Dashboard · LSV</title>
+<meta name="description" content="Preview your LSV workspace — API keys, usage, and recent obfuscation jobs.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){
+  try{
+    var theme = localStorage.getItem('lsv-theme') || 'dark';
+    var accent = localStorage.getItem('lsv-accent') || 'blue';
+    var motion = localStorage.getItem('lsv-reduce-motion') === '1';
+    var root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-accent', accent);
+    if(motion) root.classList.add('reduce-motion');
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+<div class="bg-decor" aria-hidden="true">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+<header class="navbar">
+  <div class="navbar-inner">
+    <a href="obfuscation.html" class="brand" aria-label="LSV home">
+      <span class="logo-mark" style="width:34px;height:34px"></span>
+      <span class="brand-text">
+        <span class="brand-name">LSV</span>
+        <span class="brand-tag">OBFUSCATOR</span>
+      </span>
+    </a>
+
+    <button class="btn-icon nav-burger" id="navBurger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navTabs">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+
+    <nav class="nav-tabs" id="navTabs" aria-label="Main">
+      <a href="obfuscation.html" class="nav-tab" data-tab-target="obfuscation">Obfuscation</a>
+      <a href="dashboard.html" class="nav-tab is-active" data-tab-target="dashboard" aria-current="page">Dashboard</a>
+      <a href="pricing.html" class="nav-tab" data-tab-target="pricing">Pricing</a>
+      <a href="docs.html" class="nav-tab" data-tab-target="docs">Docs</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="btn-icon" id="settingsToggle" aria-label="Open appearance settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <a href="pricing.html" class="btn btn-primary btn-sm">Get Started</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<section id="tab-dashboard" class="tab-panel is-active">
+  <div class="section" style="padding-top:56px;">
+    <div class="container">
+
+      <div class="dash-head">
+        <div>
+          <h1 class="dash-title">Dashboard</h1>
+          <p class="text-muted">Preview of your LSV workspace</p>
+        </div>
+        <span class="badge badge-accent">Demo data</span>
+      </div>
+
+      <div class="dash-stats">
+        <div class="card stat-card">
+          <span class="stat-card-label">Scripts obfuscated (month)</span>
+          <span class="stat-card-value">128</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-card-label">API requests</span>
+          <span class="stat-card-value">3,402 <span class="stat-card-sub">/ 10,000</span></span>
+          <div class="progress-track"><div class="progress-fill" style="width:34%"></div></div>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-card-label">Active license keys</span>
+          <span class="stat-card-value">3</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-card-label">Current plan</span>
+          <span class="stat-card-value">Pro</span>
+          <a href="pricing.html" class="inline-link stat-card-link">Manage plan →</a>
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <div class="card dash-panel">
+          <h3 class="panel-title">Your API key</h3>
+          <div class="api-key-row">
+            <code class="api-key" id="apiKeyText" data-full="lsv_live_7f3a9c2e8b4d1a6f0c9e3b7a2d5f8c1e" data-masked="lsv_live_••••••••••••••••••••••8c1e">lsv_live_••••••••••••••••••••••8c1e</code>
+            <button class="btn-icon" id="apiKeyToggle" aria-label="Show API key">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button class="btn-icon" id="apiKeyCopy" aria-label="Copy API key">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="regenerateKeyBtn" style="margin-top:14px">Regenerate key</button>
+        </div>
+
+        <div class="card dash-panel">
+          <div class="panel-title-row">
+            <h3 class="panel-title">Obfuscations — last 14 days</h3>
+          </div>
+          <svg class="usage-chart" id="usageChart" viewBox="0 0 560 160" preserveAspectRatio="none" role="img" aria-label="Bar chart of obfuscations over the last 14 days"></svg>
+        </div>
+      </div><!-- /dash-grid -->
+
+      <div class="card dash-panel" style="margin-top:24px;">
+        <h3 class="panel-title">New obfuscation</h3>
+        <p class="text-muted" style="font-size:13px;margin-bottom:16px;">Processed locally in your browser for this preview — nothing is uploaded.</p>
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a Lua file">
+          <input type="file" id="fileInput" accept=".lua,.luau,.txt" hidden>
+          <svg class="icon" viewBox="0 0 24 24" style="width:28px;height:28px;margin:0 auto 10px;"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <p>Drag &amp; drop a .lua file, or <span class="inline-link">browse</span></p>
+        </div>
+        <div class="selected-file" id="selectedFile" hidden>
+          <div class="selected-file-row">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/></svg>
+            <div>
+              <div id="selectedFileName" class="selected-file-name"></div>
+              <div id="selectedFileSize" class="text-muted" style="font-size:12px;"></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <select class="preset-select" id="presetSelect" aria-label="Obfuscation preset">
+              <option value="minify">Minify</option>
+              <option value="weak">Weak</option>
+              <option value="medium" selected>Medium</option>
+              <option value="strong">Strong</option>
+              <option value="virtualized">Virtualized</option>
+            </select>
+            <button class="btn btn-primary btn-sm" id="obfuscateDemoBtn">Obfuscate Script</button>
+          </div>
+          <div class="progress-track" id="demoProgress" hidden style="margin-top:12px;"><div class="progress-fill" id="demoProgressBar" style="width:0%"></div></div>
+          <div class="demo-result" id="demoResult" hidden>
+            <div class="demo-result-row"><span>Original size</span><strong id="resultOrigSize"></strong></div>
+            <div class="demo-result-row"><span>Output size</span><strong id="resultOutSize"></strong></div>
+            <p class="text-muted" style="font-size:12px;margin-top:6px;">Output is larger than the input — expected, from virtualization and encoded constants.</p>
+            <button class="btn btn-secondary btn-sm btn-block" style="margin-top:10px;" disabled title="Demo preview — sign in to download real builds">Download (demo preview)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card dash-panel" style="margin-top:24px;">
+        <h3 class="panel-title">Recent obfuscations</h3>
+        <div class="table-wrap" style="border:none;background:transparent;">
+          <table class="data-table">
+            <thead><tr><th>File</th><th>Preset</th><th>Size</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>
+              <tr><td>main.lua</td><td><span class="badge badge-violet badge-sm">Virtualized</span></td><td>12.4 KB → 17.9 KB</td><td><span class="badge badge-success badge-sm">Success</span></td><td>Nov 3, 2026</td></tr>
+              <tr><td>anti_cheat.lua</td><td><span class="badge badge-danger badge-sm">Strong</span></td><td>8.1 KB → 11.2 KB</td><td><span class="badge badge-success badge-sm">Success</span></td><td>Nov 2, 2026</td></tr>
+              <tr><td>ui_lib.lua</td><td><span class="badge badge-warning badge-sm">Medium</span></td><td>21.0 KB → 24.6 KB</td><td><span class="badge badge-success badge-sm">Success</span></td><td>Nov 1, 2026</td></tr>
+              <tr><td>loader.lua</td><td><span class="badge badge-violet badge-sm">Virtualized</span></td><td>3.2 KB → 4.8 KB</td><td><span class="badge badge-success badge-sm">Success</span></td><td>Oct 29, 2026</td></tr>
+              <tr><td>net_handler.lua</td><td><span class="badge badge-warning badge-sm">Medium</span></td><td>6.7 KB → 7.9 KB</td><td><span class="badge badge-success badge-sm">Success</span></td><td>Oct 27, 2026</td></tr>
+              <tr><td>config.lua</td><td><span class="badge badge-accent badge-sm">Minify</span></td><td>2.0 KB → 1.1 KB</td><td><span class="badge badge-success badge-sm">Success</span></td><td>Oct 25, 2026</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card dash-panel" style="margin-top:24px;">
+        <h3 class="panel-title">License keys</h3>
+        <div class="table-wrap" style="border:none;background:transparent;">
+          <table class="data-table">
+            <thead><tr><th>Key</th><th>HWID lock</th><th>Status</th><th>Created</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><code>lsv_key_••••4f2a</code></td><td>Yes</td><td><span class="badge badge-success badge-sm">Active</span></td><td>Sep 14, 2026</td><td><button class="btn btn-ghost btn-sm revoke-key-btn">Revoke</button></td></tr>
+              <tr><td><code>lsv_key_••••9b31</code></td><td>Yes</td><td><span class="badge badge-success badge-sm">Active</span></td><td>Aug 2, 2026</td><td><button class="btn btn-ghost btn-sm revoke-key-btn">Revoke</button></td></tr>
+              <tr><td><code>lsv_key_••••0e77</code></td><td>No</td><td><span class="badge badge-danger badge-sm">Revoked</span></td><td>Jun 19, 2026</td><td><button class="btn btn-ghost btn-sm" disabled>Revoke</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="obfuscation.html" class="brand">
+          <span class="logo-mark" style="width:28px;height:28px"></span>
+          <span class="brand-name">LSV</span>
+        </a>
+        <p>Protect your Lua and Luau scripts from theft, tampering, and reverse engineering.</p>
+        <div class="footer-social">
+          <!-- TODO: point these at your real social profiles -->
+          <a href="#" class="btn-icon" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="Discord"><svg class="icon" viewBox="0 0 24 24"><path d="M8 12h.01M16 12h.01M7 4.6a16 16 0 0 1 10 0M5 17.5C3 15 3 10 4.3 6.8 5.4 5 7.2 4.3 9 4l1 2M19 17.5c2-2.5 2-7.5.7-10.7C18.6 5 16.8 4.3 15 4l-1 2M5 17.5c2 1.3 4 2 7 2s5-.7 7-2"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="X / Twitter"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4l16 16M20 4 4 20"/></svg></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="obfuscation.html">Obfuscation</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="docs.html">Docs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Documentation</h5>
+        <ul>
+          <li><a href="docs.html#introduction">Introduction</a></li>
+          <li><a href="docs.html#quickstart">Quick Start</a></li>
+          <li><a href="docs.html#macros">Macros</a></li>
+          <li><a href="docs.html#cli">CLI Reference</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <!-- TODO: point Contact at a real page before launch -->
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LSV. All rights reserved.</span>
+      <span>Built for developers who ship.</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="settings-overlay" id="settingsOverlay"></div>
+<aside class="settings-panel" id="settingsPanel" role="dialog" aria-label="Appearance settings" aria-hidden="true">
+  <div class="settings-header">
+    <h3>Appearance</h3>
+    <button class="btn-icon" id="settingsClose" aria-label="Close settings">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Theme</span>
+    <div class="theme-options" id="themeOptions">
+      <button class="theme-opt" data-theme-opt="dark"><span class="theme-swatch theme-swatch-dark"></span>Dark</button>
+      <button class="theme-opt" data-theme-opt="midnight"><span class="theme-swatch theme-swatch-midnight"></span>Midnight</button>
+      <button class="theme-opt" data-theme-opt="light"><span class="theme-swatch theme-swatch-light"></span>Light</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Accent color</span>
+    <div class="accent-options" id="accentOptions">
+      <button class="accent-opt" data-accent-opt="blue" style="--sw:#3b82f6" aria-label="Blue"></button>
+      <button class="accent-opt" data-accent-opt="cyan" style="--sw:#22d3ee" aria-label="Cyan"></button>
+      <button class="accent-opt" data-accent-opt="violet" style="--sw:#8b5cf6" aria-label="Violet"></button>
+      <button class="accent-opt" data-accent-opt="emerald" style="--sw:#10b981" aria-label="Emerald"></button>
+      <button class="accent-opt" data-accent-opt="amber" style="--sw:#f59e0b" aria-label="Amber"></button>
+      <button class="accent-opt" data-accent-opt="rose" style="--sw:#fb7185" aria-label="Rose"></button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-toggle">
+      <input type="checkbox" id="motionToggle">
+      <span>Reduce glow &amp; motion effects</span>
+    </label>
+  </div>
+
+  <button class="btn btn-ghost btn-sm" id="settingsReset">Reset to defaults</button>
+  <p class="settings-note">Saved in this browser only.</p>
+</aside>
+
+
+<script src="app.js"></script>
+</body>
+</html>

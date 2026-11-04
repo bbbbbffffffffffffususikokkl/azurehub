@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Terms of Service · LSV</title>
+<meta name="description" content="The terms that govern your use of LSV — the obfuscator, dashboard, CLI, and API.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){
+  try{
+    var theme = localStorage.getItem('lsv-theme') || 'dark';
+    var accent = localStorage.getItem('lsv-accent') || 'blue';
+    var motion = localStorage.getItem('lsv-reduce-motion') === '1';
+    var root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-accent', accent);
+    if(motion) root.classList.add('reduce-motion');
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+<div class="bg-decor" aria-hidden="true">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+
+<header class="navbar">
+  <div class="navbar-inner">
+    <a href="obfuscation.html" class="brand" aria-label="LSV home">
+      <span class="logo-mark" style="width:34px;height:34px"></span>
+      <span class="brand-text">
+        <span class="brand-name">LSV</span>
+        <span class="brand-tag">OBFUSCATOR</span>
+      </span>
+    </a>
+
+    <button class="btn-icon nav-burger" id="navBurger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navTabs">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+
+    <nav class="nav-tabs" id="navTabs" aria-label="Main">
+      <a href="obfuscation.html" class="nav-tab" data-tab-target="obfuscation">Obfuscation</a>
+      <a href="dashboard.html" class="nav-tab" data-tab-target="dashboard">Dashboard</a>
+      <a href="pricing.html" class="nav-tab" data-tab-target="pricing">Pricing</a>
+      <a href="docs.html" class="nav-tab" data-tab-target="docs">Docs</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="btn-icon" id="settingsToggle" aria-label="Open appearance settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <a href="pricing.html" class="btn btn-primary btn-sm">Get Started</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<section class="tab-panel is-active">
+  <div class="section" style="padding-top:64px;">
+    <div class="container">
+      <div class="docs-content" style="max-width:760px;margin:0 auto;">
+        <div class="doc-article is-active">
+<span class="eyebrow">Legal</span>
+<h1>Terms of Service</h1>
+<div class="callout callout-info" style="margin-bottom:28px;">
+  <strong>Template notice —</strong> This page is a reasonable starting point, not legal advice. Have it reviewed by a qualified lawyer for your jurisdiction before you rely on it in production, and fill in the bracketed placeholders below.
+</div>
+<p>These Terms of Service ("Terms") govern your use of the LSV obfuscator, website, dashboard, CLI and API (together, the "Service"), operated by LSV ("we", "us"). Last updated: November 4, 2026. By using the Service you agree to these Terms.</p>
+
+<h3>1. The service</h3>
+<p>LSV compiles Lua and Luau source code you submit into obfuscated output, using the presets and macros described in our <a href="docs.html" class="inline-link">Docs</a>. Features and limits vary by plan — see <a href="pricing.html" class="inline-link">Pricing</a>.</p>
+
+<h3>2. Accounts, API keys &amp; license keys</h3>
+<p>You're responsible for keeping your account credentials and API/license keys confidential, and for all activity under them. Tell us immediately if you suspect a key has leaked — you can rotate or revoke keys yourself from the <a href="dashboard.html" class="inline-link">Dashboard</a>.</p>
+
+<h3>3. Acceptable use</h3>
+<ul class="doc-list">
+  <li>You will only submit code you own or are authorized to obfuscate.</li>
+  <li>You're responsible for ensuring the scripts you run through LSV, and what you do with the obfuscated output, comply with applicable law and with the terms of any platform the script runs on.</li>
+  <li>You won't use the Service to knowingly protect malware or code intended to damage or defraud third parties.</li>
+  <li>You won't attempt to reverse engineer, decompile, or circumvent rate limits of the Service itself.</li>
+  <li>You won't exceed your plan's usage limits through automation or multiple accounts in order to bypass billing.</li>
+</ul>
+
+<h3>4. Subscriptions &amp; billing</h3>
+<p>Paid plans are billed monthly or yearly as selected at checkout. You can upgrade, downgrade, or cancel at any time from the Dashboard; changes are prorated. <!-- TODO: state your real refund policy --> Refund requests are handled case-by-case — contact support within 14 days of a charge.</p>
+
+<h3>5. Intellectual property</h3>
+<p>You keep all rights to the source code you submit and to the obfuscated output we return to you. We and our licensors keep all rights to the LSV compiler, website, dashboard, and documentation. Using the Service doesn't grant you any rights to our underlying technology beyond what's needed to receive your obfuscated output.</p>
+
+<h3>6. No guarantee against reverse engineering</h3>
+<p>Obfuscation raises the cost and difficulty of reading, modifying, or reverse engineering a script — it is not a guarantee that a sufficiently motivated party can never do so. We make no warranty that any preset or macro makes a script permanently or completely immune to analysis.</p>
+
+<h3>7. Service availability</h3>
+<p>We aim for high availability but don't guarantee uninterrupted access on Free, Starter, or Pro plans. Formal uptime SLAs are available on Enterprise plans. <!-- TODO: link your real SLA terms if you offer one --></p>
+
+<h3>8. Disclaimer of warranties</h3>
+<p>The Service is provided "as is" and "as available," without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement.</p>
+
+<h3>9. Limitation of liability</h3>
+<p>To the maximum extent permitted by law, LSV won't be liable for indirect, incidental, special, or consequential damages, or for lost profits or data, arising from your use of the Service. <!-- TODO: have counsel tailor this to your jurisdiction --></p>
+
+<h3>10. Termination</h3>
+<p>You may stop using the Service and cancel your subscription at any time. We may suspend or terminate accounts that violate these Terms, including the acceptable-use rules in Section 3, with notice where practical.</p>
+
+<h3>11. Changes to these terms</h3>
+<p>We may update these Terms from time to time; material changes will be posted here with an updated date. Continued use of the Service after a change means you accept the updated Terms.</p>
+
+<h3>12. Governing law &amp; contact</h3>
+<p>These Terms are governed by the laws of <!-- TODO: your jurisdiction --><code>[Your Jurisdiction]</code>, without regard to conflict-of-law principles. Questions? Contact us at <!-- TODO: real support email --><code>legal@example.com</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="obfuscation.html" class="brand">
+          <span class="logo-mark" style="width:28px;height:28px"></span>
+          <span class="brand-name">LSV</span>
+        </a>
+        <p>Protect your Lua and Luau scripts from theft, tampering, and reverse engineering.</p>
+        <div class="footer-social">
+          <!-- TODO: point these at your real social profiles -->
+          <a href="#" class="btn-icon" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="Discord"><svg class="icon" viewBox="0 0 24 24"><path d="M8 12h.01M16 12h.01M7 4.6a16 16 0 0 1 10 0M5 17.5C3 15 3 10 4.3 6.8 5.4 5 7.2 4.3 9 4l1 2M19 17.5c2-2.5 2-7.5.7-10.7C18.6 5 16.8 4.3 15 4l-1 2M5 17.5c2 1.3 4 2 7 2s5-.7 7-2"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="X / Twitter"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4l16 16M20 4 4 20"/></svg></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="obfuscation.html">Obfuscation</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="docs.html">Docs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Documentation</h5>
+        <ul>
+          <li><a href="docs.html#introduction">Introduction</a></li>
+          <li><a href="docs.html#quickstart">Quick Start</a></li>
+          <li><a href="docs.html#macros">Macros</a></li>
+          <li><a href="docs.html#cli">CLI Reference</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <!-- TODO: point these at real Privacy/Terms/Contact pages before launch -->
+        <ul>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LSV. All rights reserved.</span>
+      <span>Built for developers who ship.</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="settings-overlay" id="settingsOverlay"></div>
+<aside class="settings-panel" id="settingsPanel" role="dialog" aria-label="Appearance settings" aria-hidden="true">
+  <div class="settings-header">
+    <h3>Appearance</h3>
+    <button class="btn-icon" id="settingsClose" aria-label="Close settings">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Theme</span>
+    <div class="theme-options" id="themeOptions">
+      <button class="theme-opt" data-theme-opt="dark"><span class="theme-swatch theme-swatch-dark"></span>Dark</button>
+      <button class="theme-opt" data-theme-opt="midnight"><span class="theme-swatch theme-swatch-midnight"></span>Midnight</button>
+      <button class="theme-opt" data-theme-opt="light"><span class="theme-swatch theme-swatch-light"></span>Light</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Accent color</span>
+    <div class="accent-options" id="accentOptions">
+      <button class="accent-opt" data-accent-opt="blue" style="--sw:#3b82f6" aria-label="Blue"></button>
+      <button class="accent-opt" data-accent-opt="cyan" style="--sw:#22d3ee" aria-label="Cyan"></button>
+      <button class="accent-opt" data-accent-opt="violet" style="--sw:#8b5cf6" aria-label="Violet"></button>
+      <button class="accent-opt" data-accent-opt="emerald" style="--sw:#10b981" aria-label="Emerald"></button>
+      <button class="accent-opt" data-accent-opt="amber" style="--sw:#f59e0b" aria-label="Amber"></button>
+      <button class="accent-opt" data-accent-opt="rose" style="--sw:#fb7185" aria-label="Rose"></button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-toggle">
+      <input type="checkbox" id="motionToggle">
+      <span>Reduce glow &amp; motion effects</span>
+    </label>
+  </div>
+
+  <button class="btn btn-ghost btn-sm" id="settingsReset">Reset to defaults</button>
+  <p class="settings-note">Saved in this browser only.</p>
+</aside>
+
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Docs · LSV</title>
+<meta name="description" content="LSV documentation — quick start, presets, macros (LSV_CRASH, LSV_OBFUSCATED, LSV_NO_VIRTUALIZE, LSV_PRECHECK), and CLI reference.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){
+  try{
+    var theme = localStorage.getItem('lsv-theme') || 'dark';
+    var accent = localStorage.getItem('lsv-accent') || 'blue';
+    var motion = localStorage.getItem('lsv-reduce-motion') === '1';
+    var root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-accent', accent);
+    if(motion) root.classList.add('reduce-motion');
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+<div class="bg-decor" aria-hidden="true">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+<header class="navbar">
+  <div class="navbar-inner">
+    <a href="obfuscation.html" class="brand" aria-label="LSV home">
+      <span class="logo-mark" style="width:34px;height:34px"></span>
+      <span class="brand-text">
+        <span class="brand-name">LSV</span>
+        <span class="brand-tag">OBFUSCATOR</span>
+      </span>
+    </a>
+
+    <button class="btn-icon nav-burger" id="navBurger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navTabs">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+
+    <nav class="nav-tabs" id="navTabs" aria-label="Main">
+      <a href="obfuscation.html" class="nav-tab" data-tab-target="obfuscation">Obfuscation</a>
+      <a href="dashboard.html" class="nav-tab" data-tab-target="dashboard">Dashboard</a>
+      <a href="pricing.html" class="nav-tab" data-tab-target="pricing">Pricing</a>
+      <a href="docs.html" class="nav-tab is-active" data-tab-target="docs" aria-current="page">Docs</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="btn-icon" id="settingsToggle" aria-label="Open appearance settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <a href="pricing.html" class="btn btn-primary btn-sm">Get Started</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<section id="tab-docs" class="tab-panel is-active">
+  <div class="section" style="padding-top:56px;">
+    <div class="container docs-layout">
+
+      <aside class="docs-sidebar">
+        <input type="search" id="docsSearch" class="docs-search-input" placeholder="Filter docs…" aria-label="Filter documentation">
+
+        <div class="docs-group">
+          <h5>Getting Started</h5>
+          <ul>
+            <li><a href="docs.html#introduction" class="docs-link is-active" data-doc-target="introduction" data-keywords="overview what is lsv">Introduction</a></li>
+            <li><a href="docs.html#quickstart" class="docs-link" data-doc-target="quickstart" data-keywords="install cli quick start">Quick Start</a></li>
+          </ul>
+        </div>
+
+        <div class="docs-group">
+          <h5>Guides</h5>
+          <ul>
+            <li><a href="docs.html#presets" class="docs-link" data-doc-target="presets" data-keywords="minify weak medium strong virtualized">Obfuscation Presets</a></li>
+            <li><a href="docs.html#macros" class="docs-link" data-doc-target="macros" data-keywords="LSV_CRASH LSV_OBFUSCATED LSV_NO_VIRTUALIZE LSV_PRECHECK directives">Macros <span class="badge badge-accent badge-sm" style="margin-left:4px;">4</span></a></li>
+          </ul>
+        </div>
+
+        <div class="docs-group">
+          <h5>Reference</h5>
+          <ul>
+            <li><a href="docs.html#cli" class="docs-link" data-doc-target="cli" data-keywords="flags command line">CLI Reference</a></li>
+            <li><a href="docs.html#changelog" class="docs-link" data-doc-target="changelog" data-keywords="release notes version">Changelog</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <div class="docs-content">
+
+        <article id="doc-introduction" class="doc-article is-active">
+          <span class="eyebrow">Getting Started</span>
+          <h1>Introduction</h1>
+          <p>LSV is a compiler-based obfuscator for Lua and Luau. It takes a script you'd normally ship as-is and runs it through a configurable pipeline — renaming, string encryption, control-flow flattening, dead-code injection, constant encoding, and an optional full bytecode virtual machine — producing a functionally identical script that's dramatically harder to read, diff, or decompile.</p>
+          <h3>Supported dialects</h3>
+          <ul class="doc-list">
+            <li>Lua 5.1, 5.2, 5.3</li>
+            <li>Luau (Roblox's dialect), including typed syntax</li>
+          </ul>
+          <h3>The pipeline</h3>
+          <p>Every build runs the same four stages: <strong>parse</strong> your source into an AST, <strong>transform</strong> it through the passes your chosen preset enables, <strong>expand</strong> any <a href="docs.html#macros" class="inline-link">LSV macros</a> it finds into real logic, then <strong>emit</strong> the protected Lua output.</p>
+          <div class="callout callout-info"><strong>New here?</strong> Continue to <a href="docs.html#quickstart" class="inline-link">Quick Start</a> to obfuscate your first script in under a minute.</div>
+        </article>
+
+        <article id="doc-quickstart" class="doc-article">
+          <span class="eyebrow">Getting Started</span>
+          <h1>Quick Start</h1>
+          <p>You can obfuscate a script from the CLI, or by dropping a file into the <a href="dashboard.html" class="inline-link">Dashboard</a> tab's uploader — no CLI required.</p>
+
+          <h3>1. Install the CLI</h3>
+          <div class="code-card">
+            <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">bash</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+            <pre class="code-block"><code class="language-bash">npm install -g lsv-cli
+# or
+curl -fsSL https://example.com/install.sh | sh</code></pre>
+          </div>
+
+          <h3>2. Set your API key</h3>
+          <p>Grab your key from the <a href="dashboard.html" class="inline-link">Dashboard</a> tab.</p>
+          <div class="code-card">
+            <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">bash</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+            <pre class="code-block"><code class="language-bash">export LSV_API_KEY="lsv_live_xxxxxxxxxxxxxxxx"</code></pre>
+          </div>
+
+          <h3>3. Obfuscate a script</h3>
+          <div class="code-card">
+            <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">bash</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+            <pre class="code-block"><code class="language-bash">lsv build main.lua --preset strong -o main.protected.lua</code></pre>
+          </div>
+
+          <div class="code-card">
+            <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">output</span></div>
+            <pre class="code-block"><code class="language-text">✓ Parsed main.lua (212 lines)
+✓ Applied preset: strong
+✓ Renamed 48 identifiers
+✓ Encrypted 19 string literals
+✓ Wrote main.protected.lua (4.1 KB → 5.6 KB)
+
+Done in 0.84s</code></pre>
+          </div>
+
+          <div class="callout callout-info"><strong>Next —</strong> Read <a href="docs.html#presets" class="inline-link">Obfuscation Presets</a> to pick the right protection level, or jump to <a href="docs.html#macros" class="inline-link">Macros</a> for fine-grained control.</div>
+        </article>
+
+        <article id="doc-presets" class="doc-article">
+          <span class="eyebrow">Guides</span>
+          <h1>Obfuscation Presets</h1>
+          <p>Each preset enables a stacked set of passes. Higher presets include everything the ones below them do, plus more.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Preset</th><th>Techniques applied</th><th>Performance impact</th><th>Recommended for</th></tr></thead>
+              <tbody>
+                <tr><td><span class="badge badge-accent badge-sm">Minify</span></td><td>Whitespace/comment stripping, identifier shortening</td><td>Negligible</td><td>Quick size reduction, dev builds</td></tr>
+                <tr><td><span class="badge badge-accent badge-sm">Weak</span></td><td>+ basic string obfuscation</td><td>Low</td><td>Internal tools</td></tr>
+                <tr><td><span class="badge badge-warning badge-sm">Medium</span></td><td>+ control-flow flattening, constant encoding</td><td>Low–Medium</td><td>Public free scripts</td></tr>
+                <tr><td><span class="badge badge-danger badge-sm">Strong</span></td><td>+ full string encryption, dead code, opaque predicates</td><td>Medium</td><td>Commercial scripts</td></tr>
+                <tr><td><span class="badge badge-violet badge-sm">Virtualized</span></td><td>+ custom bytecode VM for all or selected functions</td><td>Medium–High*</td><td>Maximum protection, paid releases</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top:14px;font-size:13.5px;color:var(--text-muted);">* Exempt hot paths from virtualization with the <code>LSV_NO_VIRTUALIZE()</code> macro — see <a href="docs.html#macros" class="inline-link">Macros</a>.</p>
+        </article>
+
+        <article id="doc-macros" class="doc-article">
+          <span class="eyebrow">Guides</span>
+          <h1>Macros</h1>
+          <p>LSV macros are special call-style directives recognized by the compiler's preprocessor. You write them directly in your Lua source as ordinary-looking function calls — LSV strips, rewrites, or injects real behavior into them at obfuscation time. When you run the raw, unobfuscated source directly during development, they safely no-op instead of erroring.</p>
+          <div class="callout callout-info"><strong>Note —</strong> Macros are matched syntactically before compilation, not real functions. Don't wrap them in <code>pcall</code> or reassign them to a variable — call them directly, exactly as shown below.</div>
+
+          <div class="table-wrap" style="margin:28px 0 40px;">
+            <table class="data-table">
+              <thead><tr><th>Macro</th><th>Category</th><th>Returns</th><th>Summary</th></tr></thead>
+              <tbody>
+                <tr><td><a href="#macro-lsv-crash" class="inline-link"><code>LSV_CRASH</code></a></td><td><span class="badge badge-danger badge-sm">Anti-Tamper</span></td><td>never</td><td>Halts execution via an obfuscated panic routine</td></tr>
+                <tr><td><a href="#macro-lsv-obfuscated" class="inline-link"><code>LSV_OBFUSCATED</code></a></td><td><span class="badge badge-accent badge-sm">Compiler</span></td><td>boolean / string</td><td>Detects whether you're running the compiled build</td></tr>
+                <tr><td><a href="#macro-lsv-no-virtualize" class="inline-link"><code>LSV_NO_VIRTUALIZE</code></a></td><td><span class="badge badge-warning badge-sm">Performance</span></td><td>void</td><td>Excludes the enclosing function from VM virtualization</td></tr>
+                <tr><td><a href="#macro-lsv-precheck" class="inline-link"><code>LSV_PRECHECK</code></a></td><td><span class="badge badge-violet badge-sm">Security</span></td><td>boolean</td><td>Runs an environment integrity sweep before your script runs</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="macro-card" id="macro-lsv-crash">
+            <div class="macro-head">
+              <h3 class="macro-name">LSV_CRASH</h3>
+              <span class="badge badge-danger">Anti-Tamper</span>
+            </div>
+            <p class="macro-summary">Halts execution through an obfuscated, build-unique panic routine — call it wherever a tamper or integrity check fails.</p>
+            <div class="macro-signature">LSV_CRASH(<span class="sig-param">message?: string</span>, <span class="sig-param">delaySeconds?: number</span>) <span class="sig-arrow">→</span> <span class="sig-type">never</span></div>
+
+            <div class="table-wrap" style="margin:16px 0;">
+              <table class="data-table">
+                <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>message</code></td><td>string</td><td><code>nil</code></td><td>Optional custom text baked into the compiled panic routine.</td></tr>
+                  <tr><td><code>delaySeconds</code></td><td>number</td><td><code>0</code></td><td>Waits before triggering, so the crash can't be traced back to the exact check that caused it.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="code-card">
+              <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">license.lua</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+              <pre class="code-block"><code class="language-lua">-- Halt immediately if the license check fails
+local function verifyLicense(key)
+    if not key or #key ~= 32 then
+        LSV_CRASH()
+    end
+end
+
+-- Custom panic message with a delay, so it can't be
+-- correlated back to this exact check
+if workspace:GetAttribute("Sandboxed") == true then
+    LSV_CRASH("unauthorized environment", 3)
+end</code></pre>
+            </div>
+
+            <div class="callout callout-info" style="margin-top:14px;"><strong>Note —</strong> The panic routine is re-randomized per build (error vs. corrupted state vs. infinite yield), so a patch written against one build won't transfer to the next. <code>LSV_PRECHECK</code>'s <code>strict</code> mode calls this internally on failure.</div>
+          </div>
+
+          <div class="macro-card" id="macro-lsv-obfuscated">
+            <div class="macro-head">
+              <h3 class="macro-name">LSV_OBFUSCATED</h3>
+              <span class="badge badge-accent">Compiler Directive</span>
+            </div>
+            <p class="macro-summary">A zero-cost marker you can query at runtime to detect whether the currently executing script is the compiled, protected build or raw dev source.</p>
+            <div class="macro-signature">LSV_OBFUSCATED(<span class="sig-param">query?: "bool" | "build" | "version"</span>) <span class="sig-arrow">→</span> <span class="sig-type">boolean | string</span></div>
+
+            <div class="table-wrap" style="margin:16px 0;">
+              <table class="data-table">
+                <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>query</code></td><td>string</td><td><code>"bool"</code></td><td><code>"bool"</code> returns true/false. <code>"build"</code> returns the build fingerprint. <code>"version"</code> returns the LSV compiler version used.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="code-card">
+              <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">main.lua</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+              <pre class="code-block"><code class="language-lua">if LSV_OBFUSCATED() then
+    -- only true in the compiled, protected build
+    initAntiTamper()
+else
+    print("[dev] running raw source — remember to build before shipping")
+end
+
+-- stamp logs with the build fingerprint in production
+local build = LSV_OBFUSCATED("build")
+if build then
+    logger:info(("running build %s"):format(build))
+end</code></pre>
+            </div>
+
+            <div class="callout callout-info" style="margin-top:14px;"><strong>Note —</strong> Safe to leave in shared or open-sourced code — it's an ordinary function call with no effect until the file is actually run through LSV.</div>
+          </div>
+
+          <div class="macro-card" id="macro-lsv-no-virtualize">
+            <div class="macro-head">
+              <h3 class="macro-name">LSV_NO_VIRTUALIZE</h3>
+              <span class="badge badge-warning">Performance</span>
+            </div>
+            <p class="macro-summary">Excludes the enclosing function (or the whole file, if placed at the top) from bytecode virtualization — it still gets every other pass, but runs as native Lua instead of inside LSV's VM.</p>
+            <div class="macro-signature">LSV_NO_VIRTUALIZE() <span class="sig-arrow">→</span> <span class="sig-type">void</span></div>
+
+            <div class="callout callout-info" style="margin:14px 0;"><strong>Placement —</strong> Must be the first statement in the function body it scopes. As the first statement of the whole file, it scopes the entire chunk.</div>
+
+            <div class="code-card">
+              <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">render.lua</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+              <pre class="code-block"><code class="language-lua">local function renderStep(dt)
+    LSV_NO_VIRTUALIZE() -- must be the function's first statement
+
+    for _, part in ipairs(movingParts) do
+        part.CFrame = part.CFrame * CFrame.new(0, FALL_SPEED * dt, 0)
+    end
+end</code></pre>
+            </div>
+
+            <div class="callout callout-info" style="margin-top:14px;"><strong>Note —</strong> Only affects the Virtualized preset. It's a harmless no-op on Minify/Weak/Medium/Strong, since those presets don't virtualize to begin with.</div>
+          </div>
+
+          <div class="macro-card" id="macro-lsv-precheck">
+            <div class="macro-head">
+              <h3 class="macro-name">LSV_PRECHECK</h3>
+              <span class="badge badge-violet">Security</span>
+            </div>
+            <p class="macro-summary">Runs LSV's environment integrity sweep before the rest of the chunk executes — detects common static/dynamic analysis environments and verifies the compiled chunk wasn't modified after the build.</p>
+            <div class="macro-signature">LSV_PRECHECK(<span class="sig-param">options?: table</span>) <span class="sig-arrow">→</span> <span class="sig-type">boolean</span></div>
+
+            <div class="table-wrap" style="margin:16px 0;">
+              <table class="data-table">
+                <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>mode</code></td><td><code>"strict" | "silent"</code></td><td><code>"strict"</code></td><td><code>strict</code> calls <code>LSV_CRASH()</code> internally on failure. <code>silent</code> just returns <code>false</code> so you can branch yourself.</td></tr>
+                  <tr><td><code>timeout</code></td><td>number</td><td><code>2</code></td><td>Seconds allowed for async environment checks before giving up.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="code-card">
+              <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">main.lua</span><button class="code-copy-btn btn-icon btn-sm" aria-label="Copy code"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+              <pre class="code-block"><code class="language-lua">-- strict mode: halts internally if any check fails
+LSV_PRECHECK({ mode = "strict", timeout = 2 })
+
+local Players = game:GetService("Players")
+-- ...rest of your protected script
+
+-- silent mode: handle the failure yourself
+local passed = LSV_PRECHECK({ mode = "silent" })
+if not passed then
+    return
+end</code></pre>
+            </div>
+
+            <div class="callout callout-info" style="margin-top:14px;"><strong>Note —</strong> <code>strict</code> mode composes with <code>LSV_CRASH</code> — see that macro above for what the failure path looks like downstream.</div>
+          </div>
+
+        </article>
+
+        <article id="doc-cli" class="doc-article">
+          <span class="eyebrow">Reference</span>
+          <h1>CLI Reference</h1>
+          <p>Flags accepted by <code>lsv build</code>.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>-o, --out &lt;path&gt;</code></td><td>Output file path. Defaults to <code>&lt;name&gt;.protected.lua</code>.</td></tr>
+                <tr><td><code>--preset &lt;name&gt;</code></td><td><code>minify | weak | medium | strong | virtualized</code>. Default: <code>medium</code>.</td></tr>
+                <tr><td><code>--target &lt;dialect&gt;</code></td><td><code>lua51 | lua52 | lua53 | luau</code>. Default: <code>luau</code>.</td></tr>
+                <tr><td><code>--watermark &lt;id&gt;</code></td><td>Embeds a custom build fingerprint, surfaced via <code>LSV_OBFUSCATED("build")</code>.</td></tr>
+                <tr><td><code>--no-virtualize</code></td><td>Disables VM virtualization for the whole file — equivalent to <code>LSV_NO_VIRTUALIZE()</code> at the top of every function.</td></tr>
+                <tr><td><code>--check</code></td><td>Validates the script and prints planned passes without writing output.</td></tr>
+                <tr><td><code>-v, --version</code></td><td>Prints the installed LSV CLI version.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article id="doc-changelog" class="doc-article">
+          <span class="eyebrow">Reference</span>
+          <h1>Changelog</h1>
+          <!-- Keep this updated with real release notes -->
+          <div class="changelog-entry">
+            <div class="changelog-head"><span class="badge badge-accent badge-sm">v1.0.0</span><span class="text-muted">Initial release</span></div>
+            <ul class="doc-list">
+              <li>Minify, Weak, Medium, Strong and Virtualized presets</li>
+              <li>Macro system: <code>LSV_CRASH</code>, <code>LSV_OBFUSCATED</code>, <code>LSV_NO_VIRTUALIZE</code>, <code>LSV_PRECHECK</code></li>
+              <li>Web dashboard and CLI</li>
+            </ul>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="obfuscation.html" class="brand">
+          <span class="logo-mark" style="width:28px;height:28px"></span>
+          <span class="brand-name">LSV</span>
+        </a>
+        <p>Protect your Lua and Luau scripts from theft, tampering, and reverse engineering.</p>
+        <div class="footer-social">
+          <!-- TODO: point these at your real social profiles -->
+          <a href="#" class="btn-icon" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="Discord"><svg class="icon" viewBox="0 0 24 24"><path d="M8 12h.01M16 12h.01M7 4.6a16 16 0 0 1 10 0M5 17.5C3 15 3 10 4.3 6.8 5.4 5 7.2 4.3 9 4l1 2M19 17.5c2-2.5 2-7.5.7-10.7C18.6 5 16.8 4.3 15 4l-1 2M5 17.5c2 1.3 4 2 7 2s5-.7 7-2"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="X / Twitter"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4l16 16M20 4 4 20"/></svg></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="obfuscation.html">Obfuscation</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="docs.html">Docs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Documentation</h5>
+        <ul>
+          <li><a href="docs.html#introduction">Introduction</a></li>
+          <li><a href="docs.html#quickstart">Quick Start</a></li>
+          <li><a href="docs.html#macros">Macros</a></li>
+          <li><a href="docs.html#cli">CLI Reference</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <!-- TODO: point Contact at a real page before launch -->
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LSV. All rights reserved.</span>
+      <span>Built for developers who ship.</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="settings-overlay" id="settingsOverlay"></div>
+<aside class="settings-panel" id="settingsPanel" role="dialog" aria-label="Appearance settings" aria-hidden="true">
+  <div class="settings-header">
+    <h3>Appearance</h3>
+    <button class="btn-icon" id="settingsClose" aria-label="Close settings">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Theme</span>
+    <div class="theme-options" id="themeOptions">
+      <button class="theme-opt" data-theme-opt="dark"><span class="theme-swatch theme-swatch-dark"></span>Dark</button>
+      <button class="theme-opt" data-theme-opt="midnight"><span class="theme-swatch theme-swatch-midnight"></span>Midnight</button>
+      <button class="theme-opt" data-theme-opt="light"><span class="theme-swatch theme-swatch-light"></span>Light</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Accent color</span>
+    <div class="accent-options" id="accentOptions">
+      <button class="accent-opt" data-accent-opt="blue" style="--sw:#3b82f6" aria-label="Blue"></button>
+      <button class="accent-opt" data-accent-opt="cyan" style="--sw:#22d3ee" aria-label="Cyan"></button>
+      <button class="accent-opt" data-accent-opt="violet" style="--sw:#8b5cf6" aria-label="Violet"></button>
+      <button class="accent-opt" data-accent-opt="emerald" style="--sw:#10b981" aria-label="Emerald"></button>
+      <button class="accent-opt" data-accent-opt="amber" style="--sw:#f59e0b" aria-label="Amber"></button>
+      <button class="accent-opt" data-accent-opt="rose" style="--sw:#fb7185" aria-label="Rose"></button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-toggle">
+      <input type="checkbox" id="motionToggle">
+      <span>Reduce glow &amp; motion effects</span>
+    </label>
+  </div>
+
+  <button class="btn btn-ghost btn-sm" id="settingsReset">Reset to defaults</button>
+  <p class="settings-note">Saved in this browser only.</p>
+</aside>
+
+
+<script src="app.js"></script>
+</body>
+</html>

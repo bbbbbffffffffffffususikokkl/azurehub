@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Pricing · LSV</title>
+<meta name="description" content="Simple, transparent pricing for LSV — free tier through Enterprise.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){
+  try{
+    var theme = localStorage.getItem('lsv-theme') || 'dark';
+    var accent = localStorage.getItem('lsv-accent') || 'blue';
+    var motion = localStorage.getItem('lsv-reduce-motion') === '1';
+    var root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-accent', accent);
+    if(motion) root.classList.add('reduce-motion');
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+<div class="bg-decor" aria-hidden="true">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+<header class="navbar">
+  <div class="navbar-inner">
+    <a href="obfuscation.html" class="brand" aria-label="LSV home">
+      <span class="logo-mark" style="width:34px;height:34px"></span>
+      <span class="brand-text">
+        <span class="brand-name">LSV</span>
+        <span class="brand-tag">OBFUSCATOR</span>
+      </span>
+    </a>
+
+    <button class="btn-icon nav-burger" id="navBurger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navTabs">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+
+    <nav class="nav-tabs" id="navTabs" aria-label="Main">
+      <a href="obfuscation.html" class="nav-tab" data-tab-target="obfuscation">Obfuscation</a>
+      <a href="dashboard.html" class="nav-tab" data-tab-target="dashboard">Dashboard</a>
+      <a href="pricing.html" class="nav-tab is-active" data-tab-target="pricing" aria-current="page">Pricing</a>
+      <a href="docs.html" class="nav-tab" data-tab-target="docs">Docs</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="btn-icon" id="settingsToggle" aria-label="Open appearance settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <a href="pricing.html" class="btn btn-primary btn-sm">Get Started</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<section id="tab-pricing" class="tab-panel is-active">
+  <div class="section" style="padding-top:64px;">
+    <div class="container">
+
+      <div class="section-head">
+        <span class="eyebrow">Pricing</span>
+        <h2>Simple, transparent pricing</h2>
+        <p>Start free. Upgrade for virtualization, the macro system, and API access.</p>
+      </div>
+
+      <div class="billing-toggle">
+        <span class="billing-label is-active" data-billing-label="monthly">Monthly</span>
+        <button class="switch" id="billingSwitch" role="switch" aria-checked="false" aria-label="Toggle yearly billing">
+          <span class="switch-thumb"></span>
+        </button>
+        <span class="billing-label" data-billing-label="yearly">Yearly <span class="badge badge-success badge-sm">Save up to 25%</span></span>
+      </div>
+
+      <div class="pricing-grid">
+
+        <div class="card plan-card">
+          <h3 class="plan-name">Free</h3>
+          <div class="price"><span class="price-monthly"><span class="price-amount">$0</span></span><span class="price-yearly"><span class="price-amount">$0</span></span><span class="price-period">forever</span></div>
+          <p class="plan-desc">Try LSV on small scripts.</p>
+          <a href="#" class="btn btn-secondary btn-block">Start for Free</a>
+          <ul class="plan-features">
+            <li>5 obfuscations / month</li>
+            <li>Minify &amp; Weak presets</li>
+            <li>Identifier renaming</li>
+            <li>Community Discord support</li>
+          </ul>
+        </div>
+
+        <div class="card plan-card">
+          <h3 class="plan-name">Starter</h3>
+          <div class="price"><span class="price-monthly"><span class="price-amount">$10</span><span class="price-period">/mo</span></span><span class="price-yearly"><span class="price-amount">$7.50</span><span class="price-period">/mo billed yearly</span></span></div>
+          <p class="plan-desc">For personal and hobby projects.</p>
+          <a href="#" class="btn btn-secondary btn-block">Get Starter</a>
+          <ul class="plan-features">
+            <li>100 obfuscations / month</li>
+            <li>Up to Medium preset</li>
+            <li>Control-flow flattening</li>
+            <li>String encryption</li>
+            <li>Email support</li>
+          </ul>
+        </div>
+
+        <div class="card plan-card is-popular">
+          <span class="popular-ribbon">Most Popular</span>
+          <h3 class="plan-name">Pro</h3>
+          <div class="price"><span class="price-monthly"><span class="price-amount">$20</span><span class="price-period">/mo</span></span><span class="price-yearly"><span class="price-amount">$17.50</span><span class="price-period">/mo billed yearly</span></span></div>
+          <p class="plan-desc">For shipping commercial scripts.</p>
+          <a href="#" class="btn btn-primary btn-block">Get Pro</a>
+          <ul class="plan-features">
+            <li>Unlimited obfuscations</li>
+            <li>Strong &amp; Virtualized presets</li>
+            <li>Full bytecode VM</li>
+            <li>Anti-tamper &amp; watermarking</li>
+            <li>Macro system (<code>LSV_*</code>)</li>
+            <li>API access + priority queue</li>
+            <li>Priority support</li>
+          </ul>
+        </div>
+
+        <div class="card plan-card">
+          <h3 class="plan-name">Enterprise</h3>
+          <div class="price"><span class="price-amount">Custom</span></div>
+          <p class="plan-desc">Dedicated builds, on-prem, and SLAs.</p>
+          <a href="#" class="btn btn-secondary btn-block">Contact Sales</a>
+          <ul class="plan-features">
+            <li>Dedicated per-customer VM builds</li>
+            <li>Self-hosted / on-prem option</li>
+            <li>Custom macro development</li>
+            <li>SLA &amp; dedicated account manager</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="table-wrap" style="margin-top:56px;">
+        <table class="data-table compare-table">
+          <thead><tr><th>Feature</th><th>Free</th><th>Starter</th><th>Pro</th><th>Enterprise</th></tr></thead>
+          <tbody>
+            <tr><td>Monthly obfuscations</td><td>5</td><td>100</td><td>Unlimited</td><td>Unlimited</td></tr>
+            <tr><td>Presets available</td><td>Minify, Weak</td><td>Up to Medium</td><td>All, incl. Virtualized</td><td>All + custom</td></tr>
+            <tr><td>Bytecode virtualization</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Anti-tamper macros</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Watermarking</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+            <tr><td>API access</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Self-hosted builds</td><td>—</td><td>—</td><td>—</td><td>✓</td></tr>
+            <tr><td>Support</td><td>Community</td><td>Email</td><td>Priority</td><td>Dedicated + SLA</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-head" style="margin-top:72px;">
+        <span class="eyebrow">FAQ</span>
+        <h2>Frequently asked questions</h2>
+      </div>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>What Lua versions does LSV support? <svg class="icon chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <p>Lua 5.1, 5.2, 5.3, and Luau (Roblox's dialect). Pick a target with <code>--target</code> on the CLI or in the Dashboard uploader.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Can I self-host the obfuscator? <svg class="icon chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <p>Yes — Enterprise plans include on-prem and self-hosted build options with a dedicated compiler image.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Will obfuscation affect script performance? <svg class="icon chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <p>Minify through Strong have negligible to low overhead. Virtualized trades some performance for maximum protection — use the <code>LSV_NO_VIRTUALIZE()</code> macro to exempt hot loops. See the <a href="docs.html#macros" class="inline-link">Macros docs</a>.</p>
+        </details>
+        <details class="faq-item">
+          <summary>What happens if I exceed my monthly quota? <svg class="icon chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <p>Extra jobs are queued until your quota resets, or you can upgrade instantly to keep going without a queue.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Do you store my source code? <svg class="icon chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <!-- TODO: confirm this matches your actual data retention policy before publishing -->
+          <p>Scripts are processed in memory for the duration of the build and are not retained afterward.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Can I switch plans anytime? <svg class="icon chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <p>Yes, upgrades and downgrades are prorated and take effect immediately.</p>
+        </details>
+      </div>
+
+      <div class="cta-band" style="margin-top:72px;">
+        <h2>Need something custom?</h2>
+        <p>Talk to us about dedicated builds, on-prem deployment, or custom macros.</p>
+        <a href="#" class="btn btn-primary">Contact Sales</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="obfuscation.html" class="brand">
+          <span class="logo-mark" style="width:28px;height:28px"></span>
+          <span class="brand-name">LSV</span>
+        </a>
+        <p>Protect your Lua and Luau scripts from theft, tampering, and reverse engineering.</p>
+        <div class="footer-social">
+          <!-- TODO: point these at your real social profiles -->
+          <a href="#" class="btn-icon" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="Discord"><svg class="icon" viewBox="0 0 24 24"><path d="M8 12h.01M16 12h.01M7 4.6a16 16 0 0 1 10 0M5 17.5C3 15 3 10 4.3 6.8 5.4 5 7.2 4.3 9 4l1 2M19 17.5c2-2.5 2-7.5.7-10.7C18.6 5 16.8 4.3 15 4l-1 2M5 17.5c2 1.3 4 2 7 2s5-.7 7-2"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="X / Twitter"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4l16 16M20 4 4 20"/></svg></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="obfuscation.html">Obfuscation</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="docs.html">Docs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Documentation</h5>
+        <ul>
+          <li><a href="docs.html#introduction">Introduction</a></li>
+          <li><a href="docs.html#quickstart">Quick Start</a></li>
+          <li><a href="docs.html#macros">Macros</a></li>
+          <li><a href="docs.html#cli">CLI Reference</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <!-- TODO: point Contact at a real page before launch -->
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LSV. All rights reserved.</span>
+      <span>Built for developers who ship.</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="settings-overlay" id="settingsOverlay"></div>
+<aside class="settings-panel" id="settingsPanel" role="dialog" aria-label="Appearance settings" aria-hidden="true">
+  <div class="settings-header">
+    <h3>Appearance</h3>
+    <button class="btn-icon" id="settingsClose" aria-label="Close settings">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Theme</span>
+    <div class="theme-options" id="themeOptions">
+      <button class="theme-opt" data-theme-opt="dark"><span class="theme-swatch theme-swatch-dark"></span>Dark</button>
+      <button class="theme-opt" data-theme-opt="midnight"><span class="theme-swatch theme-swatch-midnight"></span>Midnight</button>
+      <button class="theme-opt" data-theme-opt="light"><span class="theme-swatch theme-swatch-light"></span>Light</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Accent color</span>
+    <div class="accent-options" id="accentOptions">
+      <button class="accent-opt" data-accent-opt="blue" style="--sw:#3b82f6" aria-label="Blue"></button>
+      <button class="accent-opt" data-accent-opt="cyan" style="--sw:#22d3ee" aria-label="Cyan"></button>
+      <button class="accent-opt" data-accent-opt="violet" style="--sw:#8b5cf6" aria-label="Violet"></button>
+      <button class="accent-opt" data-accent-opt="emerald" style="--sw:#10b981" aria-label="Emerald"></button>
+      <button class="accent-opt" data-accent-opt="amber" style="--sw:#f59e0b" aria-label="Amber"></button>
+      <button class="accent-opt" data-accent-opt="rose" style="--sw:#fb7185" aria-label="Rose"></button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-toggle">
+      <input type="checkbox" id="motionToggle">
+      <span>Reduce glow &amp; motion effects</span>
+    </label>
+  </div>
+
+  <button class="btn btn-ghost btn-sm" id="settingsReset">Reset to defaults</button>
+  <p class="settings-note">Saved in this browser only.</p>
+</aside>
+
+
+<script src="app.js"></script>
+</body>
+</html>

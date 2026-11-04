@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>LSV — Lua &amp; Luau Obfuscation, Done Right</title>
+<meta name="description" content="LSV compiles your Lua and Luau scripts into hardened, virtualized builds — control-flow flattening, string encryption, anti-tamper macros, and more.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function(){
+  try{
+    var theme = localStorage.getItem('lsv-theme') || 'dark';
+    var accent = localStorage.getItem('lsv-accent') || 'blue';
+    var motion = localStorage.getItem('lsv-reduce-motion') === '1';
+    var root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-accent', accent);
+    if(motion) root.classList.add('reduce-motion');
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+<div class="bg-decor" aria-hidden="true">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+<header class="navbar">
+  <div class="navbar-inner">
+    <a href="obfuscation.html" class="brand" aria-label="LSV home">
+      <span class="logo-mark" style="width:34px;height:34px"></span>
+      <span class="brand-text">
+        <span class="brand-name">LSV</span>
+        <span class="brand-tag">OBFUSCATOR</span>
+      </span>
+    </a>
+
+    <button class="btn-icon nav-burger" id="navBurger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navTabs">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+
+    <nav class="nav-tabs" id="navTabs" aria-label="Main">
+      <a href="obfuscation.html" class="nav-tab is-active" data-tab-target="obfuscation" aria-current="page">Obfuscation</a>
+      <a href="dashboard.html" class="nav-tab" data-tab-target="dashboard">Dashboard</a>
+      <a href="pricing.html" class="nav-tab" data-tab-target="pricing">Pricing</a>
+      <a href="docs.html" class="nav-tab" data-tab-target="docs">Docs</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="btn-icon" id="settingsToggle" aria-label="Open appearance settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <a href="pricing.html" class="btn btn-primary btn-sm">Get Started</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<section id="tab-obfuscation" class="tab-panel is-active">
+
+  <div class="section hero-section" style="padding-top:64px;padding-bottom:40px;">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow"><span class="pulse-dot"></span> v1.0.0 · Lua 5.1–5.3 &amp; Luau</span>
+        <h1>Obfuscate your Lua.<br>Protect what you shipped.</h1>
+        <p class="hero-sub">LSV compiles your Lua and Luau scripts into a hardened, virtualized build — control-flow flattening, string encryption, anti-tamper macros, and a full bytecode VM, in one pipeline.</p>
+        <div class="btn-row">
+          <a href="pricing.html" class="btn btn-primary">Start Obfuscating — Free</a>
+          <a href="docs.html" class="btn btn-secondary">Read the Docs</a>
+        </div>
+        <p class="hero-trust">Free tier, no credit card · Scripts processed in memory, never stored</p>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <span class="logo-mark hero-logo"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-sm">
+    <div class="container reveal">
+      <div class="preview-card card">
+        <div class="preview-tabs">
+          <button class="preview-tab is-active" data-preview="before">Original</button>
+          <button class="preview-tab" data-preview="after">Obfuscated</button>
+        </div>
+        <div class="preview-stage">
+          <pre class="code-block preview-pane is-active" data-pane="before"><code class="language-lua">-- license.lua
+local HttpService = game:GetService("HttpService")
+local LICENSE_KEY = "DEV-0000-TEST"
+
+local function verify(key)
+    local res = HttpService:RequestAsync({
+        Url = "https://api.example.com/verify",
+        Method = "POST",
+        Body = HttpService:JSONEncode({ key = key }),
+    })
+    return res.Success and res.StatusCode == 200
+end
+
+if not verify(LICENSE_KEY) then
+    error("Invalid license key.")
+end
+
+return true</code></pre>
+          <pre class="code-block preview-pane" data-pane="after"><code class="language-lua">--[[ LSV · build 7f3a9c2e1b · preset: strong ]]
+local _0x9f2c = {"HttpService", "Verify", "Success"}
+local _0x7b3d = (getfenv and getfenv() or _ENV).game:GetService(_0x9f2c[1])
+
+local function _0xa1e5(...)
+    local _0xd4 = _0x7b3d:RequestAsync({
+        Url = "\104\116\116\112\115\058\047\047\097\112\105\046\101\120\097\109\112\108\101\046\099\111\109\047\118\101\114\105\102\121",
+        Method = "\080\079\083\084",
+        Body = _0x7b3d:JSONEncode({...}),
+    })
+    return _0xd4[_0x9f2c[3]] and _0xd4.StatusCode == 200
+end
+
+if not LSV_OBFUSCATED() then LSV_CRASH() end
+if not _0xa1e5({ key = "DEV-0000-TEST" }) then
+    error("\073\110\118\097\108\105\100\032\108\105\099\101\110\115\101\032\107\101\121\046")
+end
+
+return true</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-sm">
+    <div class="container stats-grid reveal">
+      <div class="stat-tile"><span class="stat-num">2.1M+</span><span class="stat-label">Scripts obfuscated</span></div>
+      <div class="stat-tile"><span class="stat-num">48ms</span><span class="stat-label">Avg. processing time</span></div>
+      <div class="stat-tile"><span class="stat-num">5</span><span class="stat-label">Protection layers</span></div>
+      <div class="stat-tile"><span class="stat-num">99.95%</span><span class="stat-label">Uptime</span></div>
+    </div>
+    <!-- TODO: replace placeholder stats with real production metrics before launch -->
+  </div>
+
+  <div class="section">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Protection layers</span>
+        <h2>Everything you need to protect a script</h2>
+        <p>Every build runs through a configurable pipeline of independent passes — mix and match per preset.</p>
+      </div>
+      <div class="features-grid reveal">
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+          <h3>Control-Flow Flattening</h3>
+          <p>Rebuilds function logic into an opaque state-machine dispatcher, destroying the original control-flow graph.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <h3>String Encryption</h3>
+          <p>Every string literal is encrypted and decrypted on-demand at runtime — never sitting in plaintext in the output.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>
+          <h3>Bytecode Virtualization</h3>
+          <p>Compiles hot paths into a custom instruction set, interpreted by a unique VM generated per build.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6l-9-4Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>Anti-Tamper Checksums</h3>
+          <p>Continuously verifies the integrity of the compiled chunk and reacts if it's been patched — see <a href="docs.html#macros" class="inline-link">LSV_CRASH</a>.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></div>
+          <h3>Identifier Renaming</h3>
+          <p>Strips every meaningful variable, function and upvalue name and replaces it with noise, breaking static readability.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div>
+          <h3>Dead Code &amp; Opaque Predicates</h3>
+          <p>Injects unreachable branches and always-true/false conditions that confuse decompilers and static analysis.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 17V7l8-4 8 4v10l-8 4-8-4Z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></div>
+          <h3>Constant Array Encoding</h3>
+          <p>Numbers and constants are split, encoded, and reconstructed through arithmetic at runtime.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+          <h3>Per-Build Watermarking</h3>
+          <p>Every compiled script embeds an invisible, unique fingerprint so leaks can be traced back to a build.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section section-alt">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Pipeline</span>
+        <h2>How it works</h2>
+      </div>
+      <div class="steps-grid reveal">
+        <div class="step-card">
+          <span class="step-num">1</span>
+          <h3>Paste or drop your script</h3>
+          <p>Bring a single file or your whole project. LSV reads standard Lua 5.1–5.3 and Luau.</p>
+        </div>
+        <div class="step-card">
+          <span class="step-num">2</span>
+          <h3>Pick a protection preset</h3>
+          <p>From quick Minify to full Virtualized protection — or fine-tune individual passes.</p>
+        </div>
+        <div class="step-card">
+          <span class="step-num">3</span>
+          <h3>Compile</h3>
+          <p>LSV runs your script through renaming, encryption, flow-flattening and VM passes in seconds.</p>
+        </div>
+        <div class="step-card">
+          <span class="step-num">4</span>
+          <h3>Ship the hardened build</h3>
+          <p>Drop the output in place of your original file. Behavior is identical — the internals aren't.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-sm">
+    <div class="container">
+      <div class="integrity-callout reveal">
+        <div class="integrity-copy">
+          <span class="eyebrow">Compiler macros</span>
+          <h2>Fine-grained control, right in your source</h2>
+          <p>Drop LSV macros directly into your Lua — lightweight, call-style directives like <code>LSV_PRECHECK()</code> and <code>LSV_CRASH()</code> that the compiler turns into real anti-tamper and integrity logic, with safe no-op stubs while you develop unobfuscated.</p>
+          <a href="docs.html#macros" class="btn btn-secondary">Explore all macros →</a>
+        </div>
+        <div class="code-card integrity-code">
+          <div class="code-card-head"><span class="code-dots"><i></i><i></i><i></i></span><span class="code-lang">render.lua</span></div>
+          <pre class="code-block"><code class="language-lua">LSV_PRECHECK({ mode = "strict" })
+
+local function renderStep(dt)
+    LSV_NO_VIRTUALIZE() -- keep this loop at native speed
+    for _, part in ipairs(movingParts) do
+        part.CFrame = part.CFrame * CFrame.new(0, dt, 0)
+    end
+end</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-sm">
+    <div class="container cta-band reveal">
+      <h2>Ready to protect your scripts?</h2>
+      <p>Start free — upgrade when you need virtualization and the full macro system.</p>
+      <div class="btn-row" style="justify-content:center">
+        <a href="pricing.html" class="btn btn-primary">Get Started — It's Free</a>
+        <a href="docs.html" class="btn btn-secondary">Read the Docs</a>
+      </div>
+    </div>
+  </div>
+
+</section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="obfuscation.html" class="brand">
+          <span class="logo-mark" style="width:28px;height:28px"></span>
+          <span class="brand-name">LSV</span>
+        </a>
+        <p>Protect your Lua and Luau scripts from theft, tampering, and reverse engineering.</p>
+        <div class="footer-social">
+          <!-- TODO: point these at your real social profiles -->
+          <a href="#" class="btn-icon" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="Discord"><svg class="icon" viewBox="0 0 24 24"><path d="M8 12h.01M16 12h.01M7 4.6a16 16 0 0 1 10 0M5 17.5C3 15 3 10 4.3 6.8 5.4 5 7.2 4.3 9 4l1 2M19 17.5c2-2.5 2-7.5.7-10.7C18.6 5 16.8 4.3 15 4l-1 2M5 17.5c2 1.3 4 2 7 2s5-.7 7-2"/></svg></a>
+          <a href="#" class="btn-icon" aria-label="X / Twitter"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4l16 16M20 4 4 20"/></svg></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="obfuscation.html">Obfuscation</a></li>
+          <li><a href="dashboard.html">Dashboard</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="docs.html">Docs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Documentation</h5>
+        <ul>
+          <li><a href="docs.html#introduction">Introduction</a></li>
+          <li><a href="docs.html#quickstart">Quick Start</a></li>
+          <li><a href="docs.html#macros">Macros</a></li>
+          <li><a href="docs.html#cli">CLI Reference</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <!-- TODO: point Contact at a real page before launch -->
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LSV. All rights reserved.</span>
+      <span>Built for developers who ship.</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="settings-overlay" id="settingsOverlay"></div>
+<aside class="settings-panel" id="settingsPanel" role="dialog" aria-label="Appearance settings" aria-hidden="true">
+  <div class="settings-header">
+    <h3>Appearance</h3>
+    <button class="btn-icon" id="settingsClose" aria-label="Close settings">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Theme</span>
+    <div class="theme-options" id="themeOptions">
+      <button class="theme-opt" data-theme-opt="dark"><span class="theme-swatch theme-swatch-dark"></span>Dark</button>
+      <button class="theme-opt" data-theme-opt="midnight"><span class="theme-swatch theme-swatch-midnight"></span>Midnight</button>
+      <button class="theme-opt" data-theme-opt="light"><span class="theme-swatch theme-swatch-light"></span>Light</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <span class="settings-label">Accent color</span>
+    <div class="accent-options" id="accentOptions">
+      <button class="accent-opt" data-accent-opt="blue" style="--sw:#3b82f6" aria-label="Blue"></button>
+      <button class="accent-opt" data-accent-opt="cyan" style="--sw:#22d3ee" aria-label="Cyan"></button>
+      <button class="accent-opt" data-accent-opt="violet" style="--sw:#8b5cf6" aria-label="Violet"></button>
+      <button class="accent-opt" data-accent-opt="emerald" style="--sw:#10b981" aria-label="Emerald"></button>
+      <button class="accent-opt" data-accent-opt="amber" style="--sw:#f59e0b" aria-label="Amber"></button>
+      <button class="accent-opt" data-accent-opt="rose" style="--sw:#fb7185" aria-label="Rose"></button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-toggle">
+      <input type="checkbox" id="motionToggle">
+      <span>Reduce glow &amp; motion effects</span>
+    </label>
+  </div>
+
+  <button class="btn btn-ghost btn-sm" id="settingsReset">Reset to defaults</button>
+  <p class="settings-note">Saved in this browser only.</p>
+</aside>
+
+
+<script src="app.js"></script>
+</body>
+</html>
