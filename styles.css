@@ -190,6 +190,7 @@ main{position:relative;z-index:1;}
 .tab-panel.is-active{display:block;}
 
 /* ============ Hero ============ */
+.hero-section{padding-top:64px;padding-bottom:40px;}
 .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:48px;align-items:center;padding-top:28px;}
 .hero-copy h1{font-size:clamp(2.3rem,5vw,3.4rem);line-height:1.08;margin:18px 0 20px;}
 .hero-sub{color:var(--text-muted);font-size:17px;line-height:1.7;max-width:540px;margin-bottom:28px;}
@@ -392,18 +393,42 @@ main{position:relative;z-index:1;}
   .nav-tabs.is-open{display:flex;}
   .nav-tab{padding:12px 14px;}
 }
+/* Phones: keep using two columns wherever a card is short enough to stay legible
+   (features/steps/stats/footer) instead of stacking everything into one tall
+   column — that's what was causing the endless scroll. Pricing cards stay
+   1-column (they're dense enough that 2-up gets cramped) but get tighter
+   padding so the section itself is shorter. */
 @media (max-width:640px){
-  .container{padding:0 18px;}
-  .stats-grid{grid-template-columns:repeat(2,1fr);}
-  .features-grid{grid-template-columns:1fr;}
-  .steps-grid{grid-template-columns:1fr;}
-  .dash-stats{grid-template-columns:1fr 1fr;}
-  .pricing-grid{grid-template-columns:1fr;}
-  .footer-grid{grid-template-columns:1fr 1fr;}
-  .section{padding:64px 0;}
-  .integrity-callout{padding:28px;}
+  .container{padding:0 16px;}
+  .navbar-inner{padding:0 16px;gap:10px;}
+  .section{padding:40px 0;}
+  .section-sm{padding:32px 0;}
+  .section-head{margin:0 auto 28px;}
+  .hero-section{padding-top:28px;padding-bottom:28px;}
+  .hero-copy h1{font-size:clamp(1.8rem,8vw,2.3rem);margin:14px 0 14px;}
+  .hero-sub{font-size:15px;margin-bottom:20px;}
+  .hero-logo{width:120px;}
+  .btn-row{gap:10px;}
+  .stats-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
+  .features-grid{grid-template-columns:repeat(2,1fr);gap:12px;}
+  .feature-card{padding:16px;}
+  .feature-card h3{font-size:14px;}
+  .feature-card p{font-size:12.5px;}
+  .feature-icon{width:32px;height:32px;margin-bottom:10px;}
+  .steps-grid{grid-template-columns:repeat(2,1fr);gap:16px;}
+  .integrity-callout{grid-template-columns:1fr;padding:20px;gap:20px;}
+  .cta-band{padding:36px 18px;}
+  .dash-stats{grid-template-columns:repeat(2,1fr);gap:12px;}
+  .stat-card{padding:16px;}
+  .dash-panel{padding:16px;}
+  .pricing-grid{grid-template-columns:1fr;gap:14px;}
+  .plan-card{padding:18px;}
+  .plan-features{margin-top:16px;gap:9px;}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:28px;}
+  .macro-card{padding:24px 0;}
 }
 @media (max-width:480px){
-  .footer-grid{grid-template-columns:1fr;gap:30px;}
-  .dash-stats{grid-template-columns:1fr;}
+  /* the hero and every section below already repeat this CTA, so drop it
+     from the navbar on narrow phones rather than letting it get cramped */
+  .nav-actions a.btn{display:none;}
 }
